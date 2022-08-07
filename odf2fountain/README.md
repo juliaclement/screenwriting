@@ -5,10 +5,12 @@ Converts a word processing file in Oasis Open Document format (LibreOffice, etc)
 This program is licenced under the [Apache 2.0 licence](https://www.apache.org/licenses/LICENSE-2.0).  You may use it only under the terms of the Apache 2.0 licence. This licence is recognised as GPL compatible so shouldn’t create problems for people wanting to reuse or extend the utilities.
 
 Documentation:  All original non-program files are licenced under the [Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)](https://creativecommons.org/licenses/by-sa/4.0/) licence.
+## **Input:**
+Input files are standard LibreOffice writer documents formatted as a screenplay script. If you base your document on the documents in the [fountain2odf](https://github.com/juliaclement/screenwriting/tree/main/fountain2odf) you have styles named Action, Character, Dialogue, etc matching the fountain types with appropriate formatting. If you choose not to use these styles, you need to indicate the style to use by setting the capitalisation / number of leading spaces to let odt2fountain and the receiving translator guess what it is working on.
 ## **Usage:**
 After installing, this is used from the command line:
 
-`	`python3 odftofountain.py [-h] [--output OUTPUT] [--forcetypes] [--extendedfountain] [--debug] file [files ...]
+`	`python3 odf2fountain.py [-h] [--output OUTPUT] [--forcetypes] [--extendedfountain] [--debug] file [files ...]
 
 positional arguments:
 
