@@ -12,9 +12,9 @@ Documentation:  All original non-program files are licenced under the [Creative 
 ## **Contents**
 Each utility has its own subdirectory with the utility, install instructions, and usage instructions in its README.
 
-[Fountain2odf](http://fountain2odf/): Convert .fountain files to .odt.
+[Fountain2odf](https://github.com/juliaclement/screenwriting/tree/main/fountain2odf): Convert .fountain files to .odt.
 
-[Odf2fountain](http://odf2fountain/): Convert .odt files formatted acording t our rules to .fountain files
+[Odf2fountain](https://github.com/juliaclement/screenwriting/tree/main/odf2fountain): Convert .odt files formatted acording t our rules to .fountain files
 ## **To do:**
 1. fountain2odf relies on having a template file with the styles we use pre-loaded. These should be generated on the fly when not in the template, allowing the template to be used for page size, header, footer, and boiler plate text.
 1. Writing some tests is required.
