@@ -31,24 +31,12 @@ from xml.sax.xmlreader import InputSource
 import sys
 from odf.namespaces import TEXTNS, STYLENS
 from io import StringIO
-
-# Convert measurements
-# Libre Office supports setting measurement units to
-# mm, cm, inch, pica & points.
-# As points are the most fine of these measurements, we
-# convert the measurements in the document to points 
-measurementFactors = {
-    'pt':   1.0,
-    'pc':   12.0, # not found in my sample documents
-    'in':   72.0,
-    'cm':   28.3465,
-    'mm':   2.83465
-}
-
-def toPoints( value: str ) :
-    uom = value[-2:]
-    factor = measurementFactors.get(uom,1.0)
-    return float(value.strip('cimitp '))*factor
+# access our shared library.
+# like Pooh I know there must be a better way but can't think what it might be
+utilPath = Path(__file__).parent.parent / 'lib'
+utilStr = str(utilPath)
+sys.path.append(utilStr)
+from odf_fountain_lib import toPoints, ifNull
 
 class FountainType(IntEnum):
     NULL = 0
@@ -132,11 +120,6 @@ StyleToFountain = {
     'Transition':           fountainRules['Transition']
 }
 
-def assignIfNull( old, new ):
-    if old is None:
-        return new
-    return old
-
 class OdtStyle():
     allStyles = {}
     stylesToParent=[]
@@ -187,7 +170,7 @@ class OdtStyle():
 
         if self.parent and self.parent.baseParent:
             self.baseParent = self.parent.baseParent
-            self.fountainInfo = assignIfNull(self.fountainInfo, self.parent.fountainInfo)
+            self.fountainInfo = ifNull(self.fountainInfo, self.parent.fountainInfo)
         if self.parent and self.parent.heritageLoaded:
             self.maybeInheritFromParent()
         else:
@@ -197,20 +180,20 @@ class OdtStyle():
     def maybeInheritFromParent(self):
         if self.parent and self.parent.heritageLoaded:
             self.heritageLoaded = True
-            self.fountainInfo = assignIfNull( self.fountainInfo, self.parent.fountainInfo )
-            self.italic = assignIfNull( self.italic, self.parent.italic )
-            self.bold = assignIfNull( self.bold, self.parent.bold )
-            self.underline = assignIfNull( self.underline, self.parent.underline)
-            self.uppercase = assignIfNull( self.uppercase, self.parent.uppercase )
-            self.align = assignIfNull( self.align, self.parent.align )
-            self.border_line_width = assignIfNull( self.border_line_width, self.parent.border_line_width )
-            self.border = assignIfNull( self.border, self.parent.border )
-            self.margin_left = assignIfNull( self.margin_left, self.parent.margin_left )
-            self.margin_right = assignIfNull( self.margin_right, self.parent.margin_right )
-            self.margin_top = assignIfNull( self.margin_top, self.parent.margin_top )
-            self.margin_bottom = assignIfNull( self.margin_bottom, self.parent.margin_bottom )
-            self.page_break = assignIfNull( self.page_break, self.parent.page_break )
-            self.is_title = assignIfNull( self.is_title, self.parent.is_title )
+            self.fountainInfo = ifNull( self.fountainInfo, self.parent.fountainInfo )
+            self.italic = ifNull( self.italic, self.parent.italic )
+            self.bold = ifNull( self.bold, self.parent.bold )
+            self.underline = ifNull( self.underline, self.parent.underline)
+            self.uppercase = ifNull( self.uppercase, self.parent.uppercase )
+            self.align = ifNull( self.align, self.parent.align )
+            self.border_line_width = ifNull( self.border_line_width, self.parent.border_line_width )
+            self.border = ifNull( self.border, self.parent.border )
+            self.margin_left = ifNull( self.margin_left, self.parent.margin_left )
+            self.margin_right = ifNull( self.margin_right, self.parent.margin_right )
+            self.margin_top = ifNull( self.margin_top, self.parent.margin_top )
+            self.margin_bottom = ifNull( self.margin_bottom, self.parent.margin_bottom )
+            self.page_break = ifNull( self.page_break, self.parent.page_break )
+            self.is_title = ifNull( self.is_title, self.parent.is_title )
 
     def assignParent( self, parent ):
         self.parent = parent

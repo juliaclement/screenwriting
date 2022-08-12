@@ -25,8 +25,16 @@
 from enum import IntFlag
 import argparse
 from pathlib import Path
-from odfdo import Document, Paragraph, Element
+from unicodedata import name
+from odfdo import Document, Paragraph, Element, Style
+from odfdo.xmlpart import XmlPart
 import sys
+# access our shared library.allStyles
+# like Pooh I know there must be a better way but can't think what it might be
+utilPath = Path(__file__).parent.parent / 'lib'
+utilStr = str(utilPath)
+sys.path.append(utilStr)
+from odf_fountain_lib import toPoints, ifNull
 
 class StyleFlags(IntFlag):
     # None
@@ -41,9 +49,145 @@ class StyleFlags(IntFlag):
     BOLD_ITALIC = 6
     BOLD_ITALIC_UNDERLINE = 7
 
+class OdtStyle:
+    """
+    Information we need to know about styles
+    TODO: Very similar to the class of the same name in odf2fountain. Merge?
+    """
+    allStyles = {}
+    stylesToParent=[]
+    def __init__(self, style:Style ):
+        self.margin_left = None
+        self.margin_right = None
+        self.margin_top = None
+        self.margin_bottom = None
+        self.break_after = None
+        self.break_before = None
+        # Fixme:
+        parentName = style.parent_style
+        name = style.name
+        self.fountainInfo=None
+        for child in style.children:
+            if (value := child.attributes.get('fo:break-after')) and value == 'page':
+                self.break_after=True
+            if (value := child.attributes.get('fo:break-before')) and value == 'page':
+                self.break_before=True
+            if (value := child.attributes.get('fo:margin-top')):
+                self.margin_top=toPoints(value)
+            if (value := child.attributes.get('fo:margin-bottom')):
+                self.margin_bottom=toPoints(value)
+            if (value := child.attributes.get('fo:margin-left')):
+                self.margin_left=toPoints(value)
+            if (value := child.attributes.get('fo:margin-right')):
+                self.margin_right=toPoints(value)
+    #    (self, name, parentName, margin_left=None, margin_right=None):
+        self.name = name
+        # self.fountainInfo = StyleToFountain.get(name)
+        self.heritageLoaded = False
+        self.parentName = parentName
+        self.bold = None
+        self.italic = None
+        self.underline = None
+
+        if name in ('Standard','Script_20_Elements', 'Heading'):
+            # These two styles are special and end the parent chain
+            self.parentName = name
+            self.parent = self
+            self.baseParentName = name
+            self.baseParent = self
+            self.is_base = True
+            self.heritageLoaded = True
+            #if not self.fountainInfo:
+            #    self.fountainInfo=fountainRules['Null']
+            self.italic = False
+            self.uppercase = False
+            self.align='left'
+            self.border_line_width = '0cm'
+            self.border = '0.1pt double #000000'
+            self.page_break = False
+            self.is_title = False
+        else:
+            self.is_base = False
+            self.baseParentName=parentName # will be adjusted later
+            self.assignParentByName(parentName)
+            self.uppercase = None
+            self.align = None
+            self.border_line_width = None
+            self.border = None
+            self.page_break = None
+            if 'TITLE' in name.upper():
+                self.is_title = True
+            else:
+                self.is_title = None
+
+        if self.parent and self.parent.baseParent:
+            self.baseParent = self.parent.baseParent
+            self.fountainInfo = ifNull(self.fountainInfo, self.parent.fountainInfo)
+        if self.parent and self.parent.heritageLoaded:
+            self.maybeInheritFromParent()
+        self.allStyles[self.name] = self
+        self.stylesToParent.append(self)
+
+    # inherit properties
+    def maybeInheritFromParent(self):
+        if self.parent and self.parent.heritageLoaded:
+            self.heritageLoaded = True
+            self.fountainInfo = ifNull( self.fountainInfo, self.parent.fountainInfo )
+            self.italic = ifNull( self.italic, self.parent.italic )
+            self.bold = ifNull( self.bold, self.parent.bold )
+            self.underline = ifNull( self.underline, self.parent.underline)
+            self.uppercase = ifNull( self.uppercase, self.parent.uppercase )
+            self.align = ifNull( self.align, self.parent.align )
+            self.border_line_width = ifNull( self.border_line_width, self.parent.border_line_width )
+            self.border = ifNull( self.border, self.parent.border )
+            self.margin_left = ifNull( self.margin_left, self.parent.margin_left )
+            self.margin_right = ifNull( self.margin_right, self.parent.margin_right )
+            self.margin_top = ifNull( self.margin_top, self.parent.margin_top )
+            self.margin_bottom = ifNull( self.margin_bottom, self.parent.margin_bottom )
+            self.page_break = ifNull( self.page_break, self.parent.page_break )
+            self.break_before = ifNull( self.break_before, self.parent.break_before )
+            self.break_after = ifNull( self.break_after, self.parent.break_after )
+            self.is_title = ifNull( self.is_title, self.parent.is_title )
+
+    def assignParent( self, parent ):
+        self.parent = parent
+        self.baseParent = parent
+        self.baseParentName = parent.name
+
+    def assignParentByName( self, parentName ):
+        self.parent = OdtStyle.allStyles.get(parentName)
+        if self.parent:
+            self.assignParent( self.parent )
+        else:
+            self.baseParentName = parentName
+    
+    def isSpaceBefore(self):
+        if self.break_before or \
+            (self.margin_top is not None and self.margin_top > 5 ):
+            return True
+        return False
+    
+    def isSpaceAfter(self):
+        if self.break_after or \
+            (self.margin_bottom is not None and self.margin_bottom > 5 ):
+            return True
+        return False
+
+    def __str__(self):
+        return f" {self.name}({self.parentName}) margins {self.margin_left}, {self.margin_right}, {self.fountainInfo}"
+
 class fountainDecoder():
     # 
     styleReplacement = {
+        # (Previous & new styles): (Use this style & blank lines following tracker)
+        # Style names = base style + Ax for "After X"
+        ('Title Line', 'Action'): ('Action ATi', True),
+        ('Title Line', 'Centered'): ('Action ATi', True),
+        ('Title Line', 'Scene Heading'): ('Scene Heading ATi', True),
+        ('Transition', 'Scene Heading'): ('Scene Heading', True),
+        ('Scene Heading', 'Character'): ('Character', False)
+    }
+    junk={
         # (Previous & new styles): (Use this style & blank lines following tracker)
         # Style names = base style + Ax for "After X"
         ('Title Line', 'Action'): ('Action ATi', True),
@@ -56,13 +200,180 @@ class fountainDecoder():
     emphasiseSubstrs=[
         # start   end     style,    code(biu = bold, italics, underline), 
         ['_***',  '***_', None,     StyleFlags.BOLD_ITALIC_UNDERLINE],
-        ['***',   '***',  None,     StyleFlags.BOLD_ITALIC            ],
+        ['***',   '***',  None,     StyleFlags.BOLD_ITALIC],
         ['_**',   '**_',  None,     StyleFlags.BOLD_UNDERLINE],
         ['**',    '**',   None,     StyleFlags.BOLD],
         ['*',     '*',    None,     StyleFlags.ITALIC],
         ['_',     '_',    None,     StyleFlags.UNDERLINE],
     ]
-    def __init__(self, document:Document) :
+
+    # Style Name, Parent Style, text to create
+    needed_styles_list=[
+        ['Script_20_Elements', 'Standard', '<style:style style:name="Script_20_Elements" style:display-name="Script Elements" style:family="paragraph" style:parent-style-name="Standard" style:class="text">'+
+            '<style:paragraph-properties><style:tab-stops/></style:paragraph-properties>'+
+            '<style:text-properties style:font-name="Liberation Mono" fo:font-family="&apos;Liberation Mono&apos;" style:font-style-name="Regular" style:font-family-generic="modern" style:font-pitch="fixed"/>'+
+            '</style:style>'],
+        ['Character', 'Script_20_Elements', '<style:style style:name="Character" style:family="paragraph" style:parent-style-name="Script_20_Elements" style:next-style-name="Dialogue" style:master-page-name="">'+
+            '<style:paragraph-properties fo:margin-left="5.59cm" fo:margin-right="0cm" fo:margin-top="0.3528cm" fo:text-indent="0cm" style:auto-text-indent="false" style:page-number="auto" fo:keep-with-next="always"/>'+
+            '<style:text-properties fo:text-transform="uppercase"/></style:style>'],
+        ['Dialogue', 'Script_20_Elements', '<style:style style:name="Dialogue" style:family="paragraph" style:parent-style-name="Script_20_Elements" style:master-page-name="">'+
+            '<style:paragraph-properties fo:margin-left="2.54cm" fo:margin-right="0cm" fo:text-indent="0cm" style:auto-text-indent="false" style:page-number="auto"/>'+
+            '</style:style>'],
+        ['Scene_20_Heading', 'Script_20_Elements', '<style:style style:name="Scene_20_Heading" style:display-name="Scene Heading" style:family="paragraph" style:parent-style-name="Script_20_Elements" style:next-style-name="Character" style:master-page-name="">'+
+            '<style:paragraph-properties fo:margin-top="0.3528cm" fo:margin-bottom="0.3528cm" fo:orphans="4" fo:widows="4" style:page-number="auto" fo:keep-with-next="always"/>'+
+            '<style:text-properties fo:text-transform="uppercase"/>'+
+            '</style:style>'],
+        ['Transition', 'Script_20_Elements', '<style:style style:name="Transition" style:family="paragraph" style:parent-style-name="Script_20_Elements" style:next-style-name="Scene_20_Heading" style:master-page-name="">'+
+            '<style:paragraph-properties  fo:margin-top="0.3528cm" fo:margin-bottom="0.3528cm" fo:text-align="end" style:justify-single-word="false" style:page-number="auto" fo:keep-with-next="always">'+
+            '<style:tab-stops/>'+
+            '</style:paragraph-properties>'+
+            '<style:text-properties fo:text-transform="uppercase" officeooo:rsid="0005d2eb"/>'+
+            '</style:style>'],
+        ['Action', 'Script_20_Elements', '<style:style style:name="Action" style:family="paragraph" style:parent-style-name="Script_20_Elements">'+
+            '<style:paragraph-properties>'+
+            '<style:tab-stops/>'+
+            '</style:paragraph-properties>'+
+            '<style:text-properties officeooo:rsid="0005d2eb"/>'+
+            '</style:style>'],
+        ['Parenthetical', 'Script_20_Elements', '<style:style style:name="Parenthetical" style:family="paragraph" style:parent-style-name="Script_20_Elements" style:next-style-name="Dialogue">'+
+            '<style:paragraph-properties fo:margin-left="3.81cm" fo:margin-right="0cm" fo:text-indent="0cm" style:auto-text-indent="false"/>'+
+            '<style:text-properties officeooo:rsid="0005d2eb"/></style:style>'],
+        ['Lyrics', 'Dialogue', '<style:style style:name="Lyrics" style:family="paragraph" style:parent-style-name="Dialogue">'+
+            '<style:text-properties fo:font-style="italic" officeooo:rsid="0008211f"/></style:style>'],
+        ['Centered', 'Action', '<style:style style:name="Centered" style:family="paragraph" style:parent-style-name="Action">'+
+            '<style:paragraph-properties fo:text-align="center" style:justify-single-word="false"/>'+
+            '</style:style>'],
+        ['Notes', 'Script_20_Elements', '<style:style style:name="Notes" style:family="paragraph" style:parent-style-name="Script_20_Elements" style:next-style-name="Dialogue">'+
+            '<style:paragraph-properties fo:margin-left="1.27cm" fo:margin-right="0cm" fo:text-indent="0cm" style:auto-text-indent="false" style:border-line-width="0cm 0.026cm 0.026cm" fo:padding="0.049cm" fo:border="1.5pt double #000000">'+
+            '<style:tab-stops/>'+
+            '</style:paragraph-properties>'+
+            '<style:text-properties fo:font-style="italic" fo:background-color="#fff5ce"/>'+
+            '</style:style>'],
+        ['Title_20_Line','Script_20_Elements','''<style:style style:name="Title_20_Line" style:display-name="Title Line" style:family="paragraph" style:parent-style-name="Script_20_Elements">
+<style:text-properties style:font-name="Liberation Sans1" fo:font-family="&apos;Liberation Sans&apos;" style:font-style-name="Regular" style:font-family-generic="swiss" style:font-pitch="variable" fo:font-size="14pt"/>
+</style:style>'''],
+        ['Title_20_Ends','Title_20_Line','''<style:style style:name="Title_20_Ends" style:display-name="Title Ends" style:family="paragraph" style:parent-style-name="Title_20_Line" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-after="page" style:border-line-width-bottom="0.018cm 0.004cm 0.018cm" fo:padding="0.049cm" fo:border-left="none" fo:border-right="none" fo:border-top="none" fo:border-bottom="1.11pt double-thin #808080"/>
+<style:text-properties officeooo:rsid="001983ec"/>
+</style:style>'''],
+        ['Character_20_AS', 'Character', '''<style:style style:name="Character_20_AS" style:display-name="Character AS" style:family="paragraph" style:parent-style-name="Character" style:next-style-name="Dialogue">
+<style:paragraph-properties fo:margin-top="0cm" fo:margin-bottom="0cm" style:contextual-spacing="false"/>
+<style:text-properties officeooo:rsid="0024c7a2"/>
+</style:style>'''],
+        ['Scene_20_Heading_20_ATi', 'Scene_20_Heading', '''<style:style style:name="Scene_20_Heading_20_ATi" style:display-name="Scene Heading ATi" style:family="paragraph" style:parent-style-name="Scene_20_Heading" style:next-style-name="Action" style:master-page-name="Standard">
+<style:paragraph-properties fo:margin-top="0cm" fo:margin-bottom="0.3528cm" style:contextual-spacing="false" style:page-number="1"/>
+</style:style>'''],
+        ['Scene_20_Heading_20_PB', 'Scene_20_Heading', '''<style:style style:name="Scene_20_Heading_20_PB" style:display-name="Scene Heading PB" style:family="paragraph" style:parent-style-name="Scene_20_Heading" style:next-style-name="Action" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-before="page"/>
+<style:text-properties officeooo:rsid="00273222"/>
+</style:style>'''],
+        ['Character_20_PB', 'Character', '''<style:style style:name="Character_20_PB" style:display-name="Character PB" style:family="paragraph" style:parent-style-name="Character" style:next-style-name="Action" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-before="page"/>
+</style:style>'''],
+        ['Action_20_PB', 'Action', '''<style:style style:name="Action_20_PB" style:display-name="Action PB" style:family="paragraph" style:parent-style-name="Action" style:next-style-name="Action" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-before="page"/>
+<style:text-properties officeooo:rsid="00278ad8"/>
+</style:style>'''],
+        ['Notes_20_PB', 'Notes', '''<style:style style:name="Notes_20_PB" style:display-name="Notes PB" style:family="paragraph" style:parent-style-name="Notes" style:next-style-name="Dialogue" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-before="page"/>
+</style:style>'''],
+        ['Centered_20_PB', 'Centered', '''<style:style style:name="Centered_20_PB" style:display-name="Centered PB" style:family="paragraph" style:parent-style-name="Centered" style:next-style-name="Centered" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-before="page"/>
+</style:style>'''],
+        ['Parenthetical_20_PB', 'Parenthetical', '''<style:style style:name="Parenthetical_20_PB" style:display-name="Parenthetical PB" style:family="paragraph" style:parent-style-name="Parenthetical" style:next-style-name="Dialogue" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-before="page"/>
+</style:style>'''],
+        ['Scene_20_Heading_20_ATr', 'Scene_20_Heading', '''<style:style style:name="Scene_20_Heading_20_ATr" style:display-name="Scene Heading ATr" style:family="paragraph" style:parent-style-name="Scene_20_Heading" style:next-style-name="Action" style:master-page-name="">
+<style:paragraph-properties fo:margin-top="0cm" fo:margin-bottom="0.3528cm" style:contextual-spacing="false" style:page-number="auto"/>
+</style:style>'''],
+        ['Transition_20_PB', 'Transition', '''<style:style style:name="Transition_20_PB" style:display-name="Transition PB" style:family="paragraph" style:parent-style-name="Transition" style:next-style-name="Scene_20_Heading_20_ATr" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-before="page"/>
+</style:style>'''],
+        ['Dialogue_20_PB', 'Dialogue', '''<style:style style:name="Dialogue_20_PB" style:display-name="Dialogue PB" style:family="paragraph" style:parent-style-name="Dialogue" style:next-style-name="Dialogue" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-before="page"/>
+</style:style>'''],
+        ['Lyrics_20_PB', 'Lyrics', '''<style:style style:name="Lyrics_20_PB" style:display-name="Lyrics PB" style:family="paragraph" style:parent-style-name="Lyrics" style:next-style-name="Lyrics" style:master-page-name="">
+<style:paragraph-properties style:page-number="auto" fo:break-before="page"/>
+</style:style>'''],
+        ['Action_20_ATi', 'Action', '''<style:style style:name="Action_20_ATi" style:display-name="Action ATi" style:family="paragraph" style:parent-style-name="Action" style:next-style-name="Action" style:master-page-name="Standard">
+<style:paragraph-properties style:page-number="1"/>
+</style:style>''']
+    ]
+
+    style_templates = {}
+    known_styles={}
+
+    def load_a_style( self, template ):
+        if None==self.known_styles.get(template[1]):
+            self.load_a_style( self.style_templates.get(template[1]))
+        styleName=self.doc.insert_style(template[2])
+        style:Style=self.doc.get_style('paragraph', styleName)
+        self.known_styles[template[0]]=OdtStyle( style )
+
+    def insert_style_templates(self):
+        #Pass 1 load in the styles from the template
+        for child in self.doc.get_styles(family="paragraph"):
+            if child.name:
+                self.known_styles[child.name]=OdtStyle( child )
+        #Pass 2 load the list of needed styles
+        for child in self.needed_styles_list:
+            self.style_templates[child[0]]=child
+        #Pass 3 create any styles that don't exist
+        for child in self.needed_styles_list:
+            if None==self.known_styles.get(child[0]):
+                self.load_a_style( child )
+
+    def attributesToStr( self, prefix, collection, suffix='' ):
+        """
+            From a dictionary {a:1, b:2, ...} create the xml entity
+            <ent a="1" b="2" c="3" />
+        """
+        answer=""
+        for item,value in collection.items():
+            answer+=f' {item}="{value}"'
+        return prefix+answer+suffix
+
+    def globalOptions( self, userOptions) :
+        # Set papersize & margins
+        # This is really horrible, odfdo doesn't seem to provide a way of replacing 
+        # the attribute values in an entity definition :(
+        # As a work around, we pull the original style apart, rebuild it and replace
+        # the original. YUCK!!!
+        oldStyle:Style = None
+        if oldStyle:=self.doc.get_style('page-layout', 'Mpm1'):
+            output:str=self.attributesToStr('<style:page-layout', oldStyle.attributes, '>')
+            for child in oldStyle.children:
+                if child.tag == 'style:page-layout-properties':
+                    attrs=child.attributes
+                    if userOptions.papersize and userOptions.papersize != 'asis':
+                        width, height = {'A4' : ('21cm', '29.7cm'),
+                                        'US' : ('8.5in', '11in'),
+                                        'LE' : ('8.5in', '11in')
+                                        }.get( userOptions.papersize[:2].upper() )
+                        attrs['fo:page-width'] = width
+                        attrs['fo:page-height'] = height
+                    if userOptions.margins.upper() != 'ASIS':
+                        attrs['fo:margin-left'] = '1.5in'
+                        attrs['fo:margin-right'] = '1in'
+                        attrs['fo:margin-top'] = '0.7874in'
+                        attrs['fo:margin-bottom'] = '1in'
+                    output+=self.attributesToStr('<style:page-layout-properties',attrs,'/>')
+                else:
+                    output+=child.serialize()
+            output+='</style:page-layout>'
+            oldStyle.delete()
+            self.doc.insert_style(output,'Mpm1',automatic=True)
+
+        # Turn off compatability option 'Add spacing between paragraphs and tabs'
+        # Fortunately we can replace the text of a config-item, so much easier
+        docSettings:XmlPart=self.doc.get_part("settings")
+        setting:Element=None
+        for setting in docSettings.xpath("//config:config-item[@config:name='AddParaTableSpacing']"):
+            setting.text = 'false'
+        for setting in docSettings.xpath("//config:config-item[@config:name='AddParaTableSpacingAtStart']"):
+            setting.text = 'false'
+
+    def __init__(self, document:Document, userOptions) :
         self.doc = document
         self.docbody=document.body
         self.inTitles = False
@@ -70,10 +381,13 @@ class fountainDecoder():
         self.maxline = 0
         self.style=''
         self.lastStyle=''
+        self.BlankPending = False
         self.Blank = True
         self.lastBlank = True
         self.pageBreakRequired = False
         self.maxAutoStyle = 0
+        self.globalOptions( userOptions)
+        self.insert_style_templates()
         for s in document.get_styles(family='text', automatic=True):
             autostyle=int(s.name[1:])
             self.maxAutoStyle = autostyle if autostyle > self.maxAutoStyle else self.maxAutoStyle
@@ -190,37 +504,44 @@ class fountainDecoder():
                     line=''
         return newline
 
-    def addLine(self, line, style, fakeStyle=None, blankAfter=False):
+    def addLine(self, line, style, fakeStyle=None ): #, blankAfter=False):
         if (replacement:=self.styleReplacement.get((self.lastStyle, style))):
             localStyle, blankAfter = replacement
         elif self.pageBreakRequired:
             localStyle = style + ' PB'
         else:
             localStyle = style
+        self.pageBreakRequired = False
+        internalStyleName=localStyle.replace(' ','_20_')
+        styleInfo : OdtStyle = self.known_styles.get(internalStyleName) or \
+                               self.known_styles.get('Action')
+        if self.BlankPending:
+            if not styleInfo.isSpaceBefore():
+                docline=Paragraph(' ')
+                self.docbody.append(docline)
+            self.BlankPending = False
+
         if '_' in line or '*' in line:
             line=self.emphasise( line, localStyle )
             docline=Element.from_tag( '<text:p text:style-name="'+\
-                    localStyle.replace(' ','_20_')+\
-                    '">'+line+'</text:p>' )
+                    internalStyleName+'">'+line+'</text:p>' )
         else:
             docline=Paragraph(line, style=localStyle)
         self.docbody.append(docline)
         self.style= fakeStyle if fakeStyle else style
-        if blankAfter:
+        if styleInfo.isSpaceAfter():
             self.Blank = True
         else:
             self.Blank = line.strip() == ''
-        self.pageBreakRequired = False
 
     def pageBreak(self):
         self.pageBreakRequired = True
         self.Blank = True
+        self.BlankPending = False
 
-    def blank(self, line):
-        if not self.lastBlank:
-            docline=Paragraph(' ')
-            self.docbody.append(docline)
+    def blank(self):
         self.Blank = True
+        self.BlankPending = True
 
     def noteBlock(self, line):
         line=line[2:]
@@ -241,7 +562,7 @@ class fountainDecoder():
         if line[0] == '>':
             line=line[1:]
         if line[-1]==':':
-            self.addLine( line, 'Transition', blankAfter=True)
+            self.addLine( line, 'Transition' )
         else:
             self.addLine( line.rstrip('<'), 'Centered', 'Action')
 
@@ -270,14 +591,14 @@ class fountainDecoder():
         while self.linenr < self.maxline:
             line = lines[self.linenr].rstrip('\n\r')
             if len(line.strip()) == 0:
-                self.blank(line)
+                self.blank()
             elif (fun:= self.start2Method.get(line[0])):
                 fun(line)
             elif len(line) > 1 and line[0:2] == '[[':
                 self.noteBlock( line )
             elif (l := line.strip()[0]) == '(':
                 self.addLine(l, 'Parenthetical')
-            elif line[0:4] in ['INT', 'EXT'] and \
+            elif line[0:5] in ['INT. ', 'EXT. '] and \
                     lines[self.linenr+1].strip(' \t\r\n') == '':
                 self.addLine(line, 'Scene Heading')
             elif self.lastBlank and line.upper() == line and \
@@ -296,27 +617,33 @@ class fountainDecoder():
             self.lastBlank = self.Blank
             self.lastStyle = self.style
 
-
 if __name__ == "__main__":
     argParser = argparse.ArgumentParser(description='Fountain to Open Document text converter.')
     argParser.add_argument('files', nargs='+', type=Path, help = "input files space separated" )
     argParser.add_argument('--output', '-output', type=Path, \
-            help = "output filename. Default = input filename.odt" )
+            help = "output filename. Default = an empty odt file." )
     argParser.add_argument('--template', '-template', type=Path, \
-            default = 'Screenplay.odt', \
             help = "File with the Screenplay styles. Default = \"Screenplay.odt\". Template files are supported." )
+    argParser.add_argument('--papersize','-papersize', choices=['a4', 'A4', 'asis', 'US', 'Letter', 'US Letter'], default='asis',\
+            help = "Document's page size. Default = the current setting of the template file, if any, or your LibreOffice default")
+    argParser.add_argument('--margins','-margins', choices=['Standard', 'standard', 'asis', 'STD', 'std'], default='standard', 
+            help="Page margins. Asis = use whatever the template or LibreOffice uses as default. Standard = 1/1.5 inches all around")
     argParser.add_argument('--debug', '-debug', action="store_true", help="provide developer information" )
     userOptions = argParser.parse_args( sys.argv[1:] )
     filler = "          "
     filename : Path = Path('.')
-    new_document = Document(userOptions.template.name)
+    if userOptions.template:
+        new_document = Document(userOptions.template.name)
+    else:
+        new_document = Document("text")
     #
     # Delete existing text
+    # TODO, only do this if a single blank line to allow for pre-formatted user templates
     body = new_document.body
     paragraphs = body.get_paragraphs()
     for p in paragraphs:
         body.delete(p)
-    decoder = fountainDecoder( new_document )
+    decoder = fountainDecoder( new_document, userOptions )
     for sourceFile in userOptions.files:
         with open(sourceFile.name, 'r') as file:
             lines = file.readlines()
