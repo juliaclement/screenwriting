@@ -32,11 +32,20 @@ import sys
 from odf.namespaces import TEXTNS, STYLENS
 from io import StringIO
 # access our shared library.
+# expect to find it on the path or in either the same directory as this module or ../lib
 # like Pooh I know there must be a better way but can't think what it might be
-utilPath = Path(__file__).parent.parent / 'lib'
-utilStr = str(utilPath)
-sys.path.append(utilStr)
-from odf_fountain_lib import toPoints, ifNull
+try:
+    from odf_fountain_lib import toPoints, ifNull
+except ModuleNotFoundError:
+    selfPath = Path(__file__).parent
+    sys.path.append(str(selfPath))
+    utilPath = selfPath.parent / 'lib'
+    if utilPath.is_dir():
+        sys.path.append(str(utilPath))
+    from odf_fountain_lib import toPoints, ifNull
+
+
+userOptions=None
 
 class FountainType(IntEnum):
     NULL = 0
@@ -522,7 +531,8 @@ def odtFileDecode(odtfile : str):
     parser.parse(inpsrc)
     return lines
 
-if __name__ == "__main__":
+def odf2fountain_main():
+    global userOptions
     argParser = argparse.ArgumentParser(description='Open Document text to Fountain converter.')
     argParser.add_argument('files', nargs='+', type=Path, help = "input files space separated" )
     argParser.add_argument('--output', '-output', type=Path, \
@@ -535,7 +545,6 @@ if __name__ == "__main__":
     userOptions = argParser.parse_args( sys.argv[1:] )
     if userOptions.extendedfountain:
         fountainRules['Dialogue'].prefix = '%'
-    filler = "          "
     if userOptions.output and len(userOptions.files) != 1:
         raise Exception("--output file is only valid when a single input file is specified")
     filename : Path = Path('.')
@@ -552,3 +561,6 @@ if __name__ == "__main__":
         else:
             outfile = filename.parent / (filename.stem + '.fountain')
         outfile.write_text(outstring, 'utf-8')
+
+if __name__ == "__main__":
+    odf2fountain_main()

@@ -29,12 +29,19 @@ from unicodedata import name
 from odfdo import Document, Paragraph, Element, Style
 from odfdo.xmlpart import XmlPart
 import sys
-# access our shared library.allStyles
+# from os import chdir, getcwd, system
+# access our shared library.
+# expect to find it on the path or in either the same directory as this module or ../lib
 # like Pooh I know there must be a better way but can't think what it might be
-utilPath = Path(__file__).parent.parent / 'lib'
-utilStr = str(utilPath)
-sys.path.append(utilStr)
-from odf_fountain_lib import toPoints, ifNull
+try:
+    from odf_fountain_lib import toPoints, ifNull
+except ModuleNotFoundError:
+    selfPath = Path(__file__).parent
+    sys.path.append(str(selfPath))
+    utilPath = selfPath.parent / 'lib'
+    if utilPath.is_dir():
+        sys.path.append(str(utilPath))
+    from odf_fountain_lib import toPoints, ifNull
 
 class StyleFlags(IntFlag):
     # None
@@ -176,7 +183,7 @@ class OdtStyle:
     def __str__(self):
         return f" {self.name}({self.parentName}) margins {self.margin_left}, {self.margin_right}, {self.fountainInfo}"
 
-class fountainDecoder():
+class FountainProcessor():
     # 
     styleReplacement = {
         # (Previous & new styles): (Use this style & blank lines following tracker)
@@ -186,15 +193,6 @@ class fountainDecoder():
         ('Title Line', 'Scene Heading'): ('Scene Heading ATi', True),
         ('Transition', 'Scene Heading'): ('Scene Heading', True),
         ('Scene Heading', 'Character'): ('Character', False)
-    }
-    junk={
-        # (Previous & new styles): (Use this style & blank lines following tracker)
-        # Style names = base style + Ax for "After X"
-        ('Title Line', 'Action'): ('Action ATi', True),
-        ('Title Line', 'Centered'): ('Action ATi', True),
-        ('Title Line', 'Scene Heading'): ('Scene Heading ATi', True),
-        ('Transition', 'Scene Heading'): ('Scene Heading ATr', True),
-        ('Scene Heading', 'Character'): ('Character AS', False),
     }
     
     emphasiseSubstrs=[
@@ -306,13 +304,13 @@ class fountainDecoder():
     def load_a_style( self, template ):
         if None==self.known_styles.get(template[1]):
             self.load_a_style( self.style_templates.get(template[1]))
-        styleName=self.doc.insert_style(template[2])
-        style:Style=self.doc.get_style('paragraph', styleName)
+        styleName=self.document.insert_style(template[2])
+        style:Style=self.document.get_style('paragraph', styleName)
         self.known_styles[template[0]]=OdtStyle( style )
 
     def insert_style_templates(self):
         #Pass 1 load in the styles from the template
-        for child in self.doc.get_styles(family="paragraph"):
+        for child in self.document.get_styles(family="paragraph"):
             if child.name:
                 self.known_styles[child.name]=OdtStyle( child )
         #Pass 2 load the list of needed styles
@@ -340,7 +338,7 @@ class fountainDecoder():
         # As a work around, we pull the original style apart, rebuild it and replace
         # the original. YUCK!!!
         oldStyle:Style = None
-        if oldStyle:=self.doc.get_style('page-layout', 'Mpm1'):
+        if oldStyle:=self.document.get_style('page-layout', 'Mpm1'):
             output:str=self.attributesToStr('<style:page-layout', oldStyle.attributes, '>')
             for child in oldStyle.children:
                 if child.tag == 'style:page-layout-properties':
@@ -362,20 +360,30 @@ class fountainDecoder():
                     output+=child.serialize()
             output+='</style:page-layout>'
             oldStyle.delete()
-            self.doc.insert_style(output,'Mpm1',automatic=True)
+            self.document.insert_style(output,'Mpm1',automatic=True)
 
         # Turn off compatability option 'Add spacing between paragraphs and tabs'
         # Fortunately we can replace the text of a config-item, so much easier
-        docSettings:XmlPart=self.doc.get_part("settings")
+        docSettings:XmlPart=self.document.get_part("settings")
         setting:Element=None
         for setting in docSettings.xpath("//config:config-item[@config:name='AddParaTableSpacing']"):
             setting.text = 'false'
         for setting in docSettings.xpath("//config:config-item[@config:name='AddParaTableSpacingAtStart']"):
             setting.text = 'false'
 
-    def __init__(self, document:Document, userOptions) :
-        self.doc = document
-        self.docbody=document.body
+    def __init__(self, userOptions) :
+        self.userOptions = userOptions
+        if self.userOptions.template:
+            self.document = Document(self.userOptions.template.name)
+        else:
+            self.document = Document("text")
+            
+        # New / empty .odt documents contain a single blank paragraph.
+        # Delete if present
+        self.docbody = self.document.body
+        paragraphs =  self.docbody.get_paragraphs()
+        if len(paragraphs) == 1:
+             self.docbody.delete(paragraphs[0])
         self.inTitles = False
         self.linenr = 0
         self.maxline = 0
@@ -388,7 +396,7 @@ class fountainDecoder():
         self.maxAutoStyle = 0
         self.globalOptions( userOptions)
         self.insert_style_templates()
-        for s in document.get_styles(family='text', automatic=True):
+        for s in self.document.get_styles(family='text', automatic=True):
             autostyle=int(s.name[1:])
             self.maxAutoStyle = autostyle if autostyle > self.maxAutoStyle else self.maxAutoStyle
             settings=['','','']
@@ -465,7 +473,7 @@ class fountainDecoder():
         if rule[3] & StyleFlags.UNDERLINE:
             newstyle+=' style:text-underline-style="solid" style:text-underline-width="auto" style:text-underline-color="font-color"'
         newstyle+='/></style:style>'
-        self.doc.insert_style(newstyle, automatic=True)
+        self.document.insert_style(newstyle, automatic=True)
         return styleName
 
     def emphasise( self, line, localStyle, parentSettings=StyleFlags.NONE ):
@@ -566,7 +574,7 @@ class fountainDecoder():
         else:
             self.addLine( line.rstrip('<'), 'Centered', 'Action')
 
-    def process(self, lines):
+    def processFile(self, lines):
         if lines is str:
             lines = lines.replace(b'\r\n',b'\n')
             lines = lines.split(b'\n')
@@ -617,45 +625,61 @@ class fountainDecoder():
             self.lastBlank = self.Blank
             self.lastStyle = self.style
 
+    def processFiles(self):
+        for fileName in self.userOptions.files:
+            with open(fileName, 'r') as file:
+                lines = file.readlines()
+                if self.userOptions.debug:
+                    print( lines )
+                self.processFile(lines)
+
+    def saveOdt(self):
+        from os import chdir, getcwd, system
+        if self.userOptions.output:
+            outputFile = self.userOptions.output
+        else:
+            sourceFile = self.userOptions.files[0]
+            outputFile = sourceFile.parent / (sourceFile.stem + '.odt')
+        self.document.save(outputFile, pretty=True)
+        if self.userOptions.pdf:
+            olddir=getcwd()
+            chdir(outputFile.parent)
+            system("libreoffice  --headless --convert-to pdf "+str(outputFile))
+            chdir( olddir )
+
+    def run(self):
+        self.processFiles()
+        self.saveOdt()
+
+class Fountain2odf():
+    def __init__( self ):
+        self.argParser = argparse.ArgumentParser(description='Fountain to Open Document text converter.')
+        self.argParser.add_argument('prog', type=Path, help = "" )
+        self.argParser.add_argument('files', nargs='+', type=Path, help = "input files space separated" )
+        self.argParser.add_argument('--output', '-o', type=Path, \
+                help = "output filename. Default = an empty odt file." )
+        self.argParser.add_argument('--template', '-t', type=Path, \
+                help = "File with the Screenplay styles. Default = \"Screenplay.odt\". Template files are supported." )
+        self.argParser.add_argument('--forcestyles', '-fs', action="store_true", \
+                help = "Replace existing styles of the same name in the template with the current versions" )
+        self.argParser.add_argument('--pdf', action="store_true", \
+                help = "use LibreOffice to create a PDF file in the same directory as the output file. "+ \
+                       "Requires LibreOffice installed and in the current path" )
+        self.argParser.add_argument('--papersize','-p', choices=['a4', 'A4', 'asis', 'US', 'Letter', 'US Letter'], default='asis',\
+                help = "Document's page size. Default = the current setting of the template file, if any, or your LibreOffice default")
+        self.argParser.add_argument('--margins','-m', choices=['Standard', 'standard', 'asis', 'STD', 'std'], default='standard', 
+                help="Page margins. Asis = use whatever the template or LibreOffice uses as default. Standard = 1/1.5 inches all around")
+        self.argParser.add_argument('--debug', action="store_true", help="provide developer information" )
+        self.userOptions = argparse.Namespace()
+
+    def parseArgs( self, args = sys.argv ):
+        if len(args) == 0:
+            args = ['prog', '--help']
+        self.userOptions = self.argParser.parse_args( args )
+        return self.userOptions
+
 if __name__ == "__main__":
-    argParser = argparse.ArgumentParser(description='Fountain to Open Document text converter.')
-    argParser.add_argument('files', nargs='+', type=Path, help = "input files space separated" )
-    argParser.add_argument('--output', '-output', type=Path, \
-            help = "output filename. Default = an empty odt file." )
-    argParser.add_argument('--template', '-template', type=Path, \
-            help = "File with the Screenplay styles. Default = \"Screenplay.odt\". Template files are supported." )
-    argParser.add_argument('--papersize','-papersize', choices=['a4', 'A4', 'asis', 'US', 'Letter', 'US Letter'], default='asis',\
-            help = "Document's page size. Default = the current setting of the template file, if any, or your LibreOffice default")
-    argParser.add_argument('--margins','-margins', choices=['Standard', 'standard', 'asis', 'STD', 'std'], default='standard', 
-            help="Page margins. Asis = use whatever the template or LibreOffice uses as default. Standard = 1/1.5 inches all around")
-    argParser.add_argument('--debug', '-debug', action="store_true", help="provide developer information" )
-    userOptions = argParser.parse_args( sys.argv[1:] )
-    filler = "          "
-    filename : Path = Path('.')
-    if userOptions.template:
-        new_document = Document(userOptions.template.name)
-    else:
-        new_document = Document("text")
-    #
-    # Delete existing text
-    # TODO, only do this if a single blank line to allow for pre-formatted user templates
-    body = new_document.body
-    paragraphs = body.get_paragraphs()
-    for p in paragraphs:
-        body.delete(p)
-    decoder = fountainDecoder( new_document, userOptions )
-    for sourceFile in userOptions.files:
-        with open(sourceFile.name, 'r') as file:
-            lines = file.readlines()
-            if userOptions.debug:
-                print( lines )
-            decoder.process(lines)
-
-    if userOptions.output:
-        outputFile = userOptions.output.name
-    else:
-        sourceFile = userOptions.files[0]
-        outputFile = sourceFile.parent / (sourceFile.stem + '.odt')
-    new_document.save(outputFile, pretty=True)
-
-pass
+    prog=Fountain2odf()
+    prog.parseArgs()
+    processor = FountainProcessor( prog.userOptions )
+    processor.run()
