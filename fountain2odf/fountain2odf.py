@@ -252,6 +252,9 @@ class FountainProcessor():
         ['Title_20_Line','Script_20_Elements','''<style:style style:name="Title_20_Line" style:display-name="Title Line" style:family="paragraph" style:parent-style-name="Script_20_Elements">
 <style:text-properties style:font-name="Liberation Sans1" fo:font-family="&apos;Liberation Sans&apos;" style:font-style-name="Regular" style:font-family-generic="swiss" style:font-pitch="variable" fo:font-size="14pt"/>
 </style:style>'''],
+        ['Title_20_Line_20_Centered','Title_20_Line','''<style:style style:name="Title_20_Line_20_Centered" style:display-name="Title Line Centered" style:family="paragraph" style:parent-style-name="Title_20_Line">
+<style:paragraph-properties fo:text-align="center" style:justify-single-word="false"/>
+</style:style>'''],
         ['Title_20_Ends','Title_20_Line','''<style:style style:name="Title_20_Ends" style:display-name="Title Ends" style:family="paragraph" style:parent-style-name="Title_20_Line" style:master-page-name="">
 <style:paragraph-properties style:page-number="auto" fo:break-after="page" style:border-line-width-bottom="0.018cm 0.004cm 0.018cm" fo:padding="0.049cm" fo:border-left="none" fo:border-right="none" fo:border-top="none" fo:border-bottom="1.11pt double-thin #808080"/>
 <style:text-properties officeooo:rsid="001983ec"/>
@@ -404,6 +407,7 @@ class FountainProcessor():
         self.maxAutoStyle = 0
         self.globalOptions( userOptions)
         self.insert_style_templates()
+        self.lastTitleStyle='Title Line'
         for s in self.document.get_styles(family='text', automatic=True):
             autostyle=int(s.name[1:])
             self.maxAutoStyle = autostyle if autostyle > self.maxAutoStyle else self.maxAutoStyle
@@ -446,12 +450,15 @@ class FountainProcessor():
                     line=line[6:].strip()
                 docline=Paragraph(line.strip(),style="Title")
                 self.docbody.append(docline)
+                self.lastTitleStyle= 'Title Line Centered'
                 firstTitle = False
             elif ':' in line:
-                docline=Paragraph(line.strip(),style="Title Line")
+                parts=line.strip().split(':',1)
+                self.lastTitleStyle= 'Title Line Centered' if parts[0].lower() in ['title', 'credit','author','authors','source'] else 'Title Line'
+                docline=Paragraph(line.strip(),style=self.lastTitleStyle)
                 self.docbody.append(docline)
             elif len( line) > 3 and (line[0:3] == '   ' or line[0]=='\t'):
-                docline=Paragraph(style="Title Line")
+                docline=Paragraph(style=self.lastTitleStyle)
                 docline.append_plain_text('    '+(line.strip()))
                 self.docbody.append(docline)
             else:
