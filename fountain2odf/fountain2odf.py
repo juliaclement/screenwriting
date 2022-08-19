@@ -19,7 +19,9 @@
 #
 # Contributor(s):
 #
-# 7/08/2022   Julia Clement     v 0.0.0     Initial version
+#  7/08/2022    Julia Clement     v 0.0.0     Initial version
+# 10-12/08/2022 Julia Clement     v 0.0.0     Improve usability, separate lib module
+# 19/08/2022    Julia Clement     v 0.0.0     Various Clean-ups. Add .pdf output
 #
 
 from enum import IntFlag
@@ -316,10 +318,16 @@ class FountainProcessor():
         #Pass 2 load the list of needed styles
         for child in self.needed_styles_list:
             self.style_templates[child[0]]=child
-        #Pass 3 create any styles that don't exist
-        for child in self.needed_styles_list:
-            if None==self.known_styles.get(child[0]):
-                self.load_a_style( child )
+        #Pass 3 create any styles that don't exist or replace existing ones
+        if self.userOptions.forcestyles:
+            for child in self.needed_styles_list:
+                styleName=self.document.insert_style(child[2])
+                style:Style=self.document.get_style('paragraph', styleName)
+                self.known_styles[child[0]]=OdtStyle( style )
+        else:
+            for child in self.needed_styles_list:
+                if None==self.known_styles.get(child[0]):
+                    self.load_a_style( child )
 
     def attributesToStr( self, prefix, collection, suffix='' ):
         """

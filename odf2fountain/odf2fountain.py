@@ -19,7 +19,9 @@
 #
 # Contributor(s):
 #
-# 3/08/2022 Julia Clement     v 0.0.0     Initial version
+#  3/08/2022   Julia Clement     v 0.0.0     Initial version
+# 10/08/2022   Julia Clement     v 0.0.0     Improve usability, separate lib module
+# 19/08/2022   Julia Clement     v 0.0.0     Various Clean-ups.
 #
 
 from enum import IntEnum
