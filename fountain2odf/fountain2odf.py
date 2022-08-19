@@ -31,7 +31,7 @@ from unicodedata import name
 from odfdo import Document, Paragraph, Element, Style
 from odfdo.xmlpart import XmlPart
 import sys
-# from os import chdir, getcwd, system
+
 # access our shared library.
 # expect to find it on the path or in either the same directory as this module or ../lib
 # like Pooh I know there must be a better way but can't think what it might be
@@ -88,10 +88,8 @@ class OdtStyle:
             if (value := child.attributes.get('fo:margin-left')):
                 self.margin_left=toPoints(value)
             if (value := child.attributes.get('fo:margin-right')):
-                self.margin_right=toPoints(value)
-    #    (self, name, parentName, margin_left=None, margin_right=None):
+                self.margin_right=toPoints(value)                
         self.name = name
-        # self.fountainInfo = StyleToFountain.get(name)
         self.heritageLoaded = False
         self.parentName = parentName
         self.bold = None
@@ -656,10 +654,13 @@ class FountainProcessor():
             sourceFile = self.userOptions.files[0]
             outputFile = sourceFile.parent / (sourceFile.stem + '.odt')
         self.document.save(outputFile, pretty=True)
-        if self.userOptions.pdf:
+        if self.userOptions.pdf or self.userOptions.docx:
             olddir=getcwd()
             chdir(outputFile.parent)
-            system("libreoffice  --headless --convert-to pdf "+str(outputFile))
+            if self.userOptions.pdf:
+                system("soffice  --headless --convert-to pdf "+str(outputFile))
+            if self.userOptions.docx:
+                system("soffice  --headless --convert-to docx "+str(outputFile))
             chdir( olddir )
 
     def run(self):
@@ -678,8 +679,11 @@ class Fountain2odf():
         self.argParser.add_argument('--forcestyles', '-fs', action="store_true", \
                 help = "Replace existing styles of the same name in the template with the current versions" )
         self.argParser.add_argument('--pdf', action="store_true", \
-                help = "use LibreOffice to create a PDF file in the same directory as the output file. "+ \
-                       "Requires LibreOffice installed and in the current path" )
+                help = "use LibreOffice or Apache OpenOffice to create a PDF file in the same directory as the output file. "+ \
+                       "Requires LibreOffice or Apache OpenOffice installed and in the current path" )
+        self.argParser.add_argument('--docx', action="store_true", \
+                help = "use LibreOffice or Apache OpenOffice to create an Ms Word file in the same directory as the output file. "+ \
+                       "Requires LibreOffice or Apache OpenOffice installed and in the current path" )
         self.argParser.add_argument('--papersize','-p', choices=['a4', 'A4', 'asis', 'US', 'Letter', 'US Letter'], default='asis',\
                 help = "Document's page size. Default = the current setting of the template file, if any, or your LibreOffice default")
         self.argParser.add_argument('--margins','-m', choices=['Standard', 'standard', 'asis', 'STD', 'std'], default='standard', 
