@@ -42,7 +42,7 @@ instructions, and usage instructions in its README.
 Convert .fountain files to .odt.
 
 [Odf2fountain](https://github.com/juliaclement/screenwriting/tree/main/odf2fountain):
-Convert .odt files formatted acording t our rules to .fountain files
+Convert .odt files formatted acording to our rules to .fountain files
 
 ## To do:
 
@@ -87,12 +87,10 @@ Some changes that can be justified, I am unwilling to do. examples:
     containing these constructs have decided to live with it. There are
     work arounds, e.g. ‘This is some text in \*italics with embedded\*
     \*\*\*bold\*\*\* \*sweet\!\*’ should work
-2.  I’m not going to write a Fountain to PDF converter.  
+2.  I’m not going to write an embedded Fountain to PDF converter.  
       
-    Reason: Libreoffice comes with a commandline PDF writer. My
+    Reason: Libreoffice comes with a command line PDF writer. My
     LibreOffice originals can be directly exported by that software as
     can ODF files created by fountain2odf.py. To turn .fountain files
     into PDFs:  
-    python3 fountain2odf.py my.fountain –template pageinfo.odt -o
-    my\_temp.odt  
-    libreoffice --headless --convert-to pdf my\_temp.odt
+    python3 fountain2odf.py my.fountain -o my\_script.odt --pdf

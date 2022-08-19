@@ -682,7 +682,7 @@ class Fountain2odf():
                 help = "use LibreOffice or Apache OpenOffice to create a PDF file in the same directory as the output file. "+ \
                        "Requires LibreOffice or Apache OpenOffice installed and in the current path" )
         self.argParser.add_argument('--docx', action="store_true", \
-                help = "use LibreOffice or Apache OpenOffice to create an Ms Word file in the same directory as the output file. "+ \
+                help = "use LibreOffice or Apache OpenOffice to create a MS Word file in the same directory as the output file. "+ \
                        "Requires LibreOffice or Apache OpenOffice installed and in the current path" )
         self.argParser.add_argument('--papersize','-p', choices=['a4', 'A4', 'asis', 'US', 'Letter', 'US Letter'], default='asis',\
                 help = "Document's page size. Default = the current setting of the template file, if any, or your LibreOffice default")

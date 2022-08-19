@@ -25,11 +25,14 @@ BY-SA 4.0)](https://creativecommons.org/licenses/by-sa/4.0/) licence.
 After installing, this is used from the command line:
 
 python fountain2odf.py \[-h\] \[--output OUTPUT\] \[--template
-TEMPLATE\] \[--papersize {a4,A4,asis,US,Letter,US Letter}\]
+TEMPLATE\] \[--forcestyles\] \[--pdf\] \[--docx\] \[--papersize
+{A4,asis,US Letter}\]
 
-\[--margins {Standard,standard,asis,STD,std}\] \[--debug\]
+\[--margins {Standard,asis,std}\]
 
-files \[files ...\]
+\[--debug\]
+
+prog files \[files ...\]
 
 positional arguments:
 
@@ -37,50 +40,63 @@ files                input files space separated
 
 options:
 
-\-h, --help           show this help message and exit
+\-h, --help           show help message and exit
 
-\--output OUTPUT
+\--output OUTPUT, -o OUTPUT
 
-output filename. Default = input filename.odt
+output filename. Default = an empty odt file.
 
-\--template TEMPLATE
+\--template TEMPLATE, -t TEMPLATE
 
-File with Screenplay formatting. Styles will be added. Default = an empty odt file.". Template
+File with the Screenplay styles. Default = "Screenplay.odt". Template
 files are supported.
 
-\--papersize {A4,asis,US Letter}
+\--forcestyles, -fs   Replace existing styles of the same name in the in
+memory template with the current versions. Does not change the saved
+copy
 
-Document's page size. Default = the current setting of the template
-file, if any, or your LibreOffice systemwide default
+\--pdf                use LibreOffice or Apache OpenOffice to create a
+PDF file in the same directory as the output file. Requires LibreOffice
+or Apache
 
-\--margins {Standard,standard,asis,STD,std}
+OpenOffice installed and in the current path
+
+\--docx               use LibreOffice or Apache OpenOffice to create a
+MS Word file in the same directory as the output file. Requires
+LibreOffice or Apache
+
+OpenOffice installed and in the current path
+
+\--papersize {a4,A4,asis,US,Letter,US Letter}, also -p. Document's page
+size. Default = the current setting of the template file, if any, or
+your LibreOffice default
+
+\--margins {Standard,standard,asis,STD,std}, -m
+{Standard,standard,asis,STD,std}
 
 Page margins. Asis = use whatever the template or LibreOffice uses as
 default. Standard = 1/1.5 inches all around
 
-\--debug      provide developer information
+\--debug              provide developer information
 
 ### Setup
 
-1.  Install dependencies, see below
-2.  Download the program folder from github
-3.  Optional: Copy either ScreenplayA4.odt or ScreenplayUS.odt to
-    Screenplay.odt in the directory your .fountain files are in, this
-    saves having to specify your template every time you use the program
+1.  Install dependencies, see below,
+2.  Download the program folder from github,
+3.  Download the file odf\_fountain\_lib.py from the lib directory, and
+    place in the same directory as fountain2odf.py
 
 ### Making PDF files
 
 As its use case is to allow editing of files in a wordprocessor,
 fountain2odf does **not**, by design, directly create PDF files, but
-LibreOffice does and can run in a “headless” (batch) mode. These two
-commands should suffice:
+LibreOffice does and can run in a “headless” (batch) mode. 
 
-python3 fountain2odf.py my.fountain –template pageinfo.odt -o
-my\_temp.odt  
-libreoffice --headless --convert-to pdf my\_temp.odt
-
-They could easily be made into a batch (or shell script) file. For
-completeness my\_temp.odt should be deleted afterwards
+As a convenience, at the end of processing, fountain2odf can run a
+headless LibreOffice to copy the created Open Document file to .PDF &
+even .DOCX formats. For this to work you will need to install
+LibreOffice and make sure it’s in your path. It might also work with an
+install of Apache OpenOffice but this is currently untested.
 
 ## Dependencies
 
@@ -141,6 +157,3 @@ Some changes that can be justified, I am unwilling to do. examples:
     containing these constructs have decided to live with it. There are
     work arounds, e.g. ‘This is some text in \*italics with embedded\*
     \*\*\*bold\*\*\* \*sweet\!\*’ should work
-2.  I’m not going to write a Fountain to PDF converter.  
-      
-    See above for a work-around
