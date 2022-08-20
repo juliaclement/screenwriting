@@ -28,7 +28,9 @@ python fountain2odf.py \[-h\] \[--output OUTPUT\] \[--template
 TEMPLATE\] \[--forcestyles\] \[--pdf\] \[--docx\] \[--papersize
 {A4,asis,US Letter}\]
 
-\[--margins {Standard,asis,std}\]
+\[--margins {Standard,asis,std}\] 
+
+\[--config CONFIG\]
 
 \[--debug\]
 
@@ -77,7 +79,42 @@ your LibreOffice default
 Page margins. Asis = use whatever the template or LibreOffice uses as
 default. Standard = 1/1.5 inches all around
 
+\--config CONFIG      Configuration file which will be merged with
+command-line options. See below for format.
+
 \--debug              provide developer information
+
+### Configuration File
+
+Fountain2odf supports a simple configuration file which supplies default
+values for the various options.
+
+The format of the file is:
+
+  - \# starts a comment line
+
+  - option=value for an option that takes a parameter
+
+  - option for an option that does not take a parameter
+
+  - one option per line
+
+  - all options must be spelled out in full (The – is optional)
+
+  - unrecognised options will print an error line
+
+  - if an option appears more than once, the last occurrence will be
+    used
+
+  - For example, if you always want to produce PDF files and have US
+    paper size, you could
+    
+      - create a configUS.txt file containing these lines
+        
+          - pdf
+          - papersize=US
+    
+      - then add --config \[*path*\]configUS to your parameters
 
 ### Setup
 

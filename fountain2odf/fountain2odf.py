@@ -667,34 +667,87 @@ class FountainProcessor():
         self.processFiles()
         self.saveOdt()
 
+class ArgOptions:
+    class Arg:
+        def __init__(self, *pargs, **kw) -> None:
+            self.pargs = pargs
+            self.name=pargs[0].strip('-')
+            self.kw=kw
+        def set_default(self, default ):
+            self.kw['default']=default
+    def __init__(self) -> None:
+        self.args={}
+    def add_argument(self, *pargs, **kw ):
+        arg=self.Arg(*pargs,**kw)
+        self.args[arg.name]=arg
+    def set_default(self, opt, default):
+        try:
+            arg=self.args[opt]
+            arg.set_default(default)
+        except KeyError:
+            print(f'Unknown option {opt}, skipped')
+    def export( self, argParser:argparse.ArgumentParser) :
+        for arg in self.args.values():
+            argParser.add_argument( *arg.pargs, **arg.kw)
+
 class Fountain2odf():
     def __init__( self ):
-        self.argParser = argparse.ArgumentParser(description='Fountain to Open Document text converter.')
-        self.argParser.add_argument('prog', type=Path, help = "" )
-        self.argParser.add_argument('files', nargs='+', type=Path, help = "input files space separated" )
-        self.argParser.add_argument('--output', '-o', type=Path, \
+        self.argOptions=ArgOptions()
+        self.argOptions.add_argument('--output', '-o', type=Path, \
                 help = "output filename. Default = an empty odt file." )
-        self.argParser.add_argument('--template', '-t', type=Path, \
-                help = "File with the Screenplay styles. Default = \"Screenplay.odt\". Template files are supported." )
-        self.argParser.add_argument('--forcestyles', '-fs', action="store_true", \
+        self.argOptions.add_argument('--template', '-t', type=Path, \
+                help = "File with the Screenplay styles pre-loaded. Template files are supported." )
+        self.argOptions.add_argument('--forcestyles', '-fs', action="store_true", \
                 help = "Replace existing styles of the same name in the template with the current versions" )
-        self.argParser.add_argument('--pdf', action="store_true", \
+        self.argOptions.add_argument('--pdf', action="store_true", \
                 help = "use LibreOffice or Apache OpenOffice to create a PDF file in the same directory as the output file. "+ \
                        "Requires LibreOffice or Apache OpenOffice installed and in the current path" )
-        self.argParser.add_argument('--docx', action="store_true", \
+        self.argOptions.add_argument('--docx', action="store_true", \
                 help = "use LibreOffice or Apache OpenOffice to create a MS Word file in the same directory as the output file. "+ \
                        "Requires LibreOffice or Apache OpenOffice installed and in the current path" )
-        self.argParser.add_argument('--papersize','-p', choices=['a4', 'A4', 'asis', 'US', 'Letter', 'US Letter'], default='asis',\
+        self.argOptions.add_argument('--papersize','-p', choices=['a4', 'A4', 'asis', 'US', 'Letter', 'US Letter'], default='asis',\
                 help = "Document's page size. Default = the current setting of the template file, if any, or your LibreOffice default")
-        self.argParser.add_argument('--margins','-m', choices=['Standard', 'standard', 'asis', 'STD', 'std'], default='standard', 
+        self.argOptions.add_argument('--margins','-m', choices=['Standard', 'standard', 'asis', 'STD', 'std'], default='standard', 
                 help="Page margins. Asis = use whatever the template or LibreOffice uses as default. Standard = 1/1.5 inches all around")
-        self.argParser.add_argument('--debug', action="store_true", help="provide developer information" )
+        self.argOptions.add_argument('--config', type=Path,
+                help="Configuration file which will be merged with command-line options. See documentation for format.")
+        self.argOptions.add_argument('--debug', action="store_true", help="provide developer information" )
+
+        self.argParser=self.createParser()
         self.userOptions = argparse.Namespace()
+
+    def createParser(self)->argparse.ArgumentParser:
+        argParser = argparse.ArgumentParser(description='Fountain to Open Document text converter.')
+        argParser.add_argument('prog', type=Path, help = "" )
+        argParser.add_argument('files', nargs='+', type=Path, help = "input files space separated" )
+        self.argOptions.export(argParser)
+        return argParser
 
     def parseArgs( self, args = sys.argv ):
         if len(args) == 0:
             args = ['prog', '--help']
         self.userOptions = self.argParser.parse_args( args )
+        if self.userOptions.config:
+            storeTrues = []
+            with open(self.userOptions.config, 'r') as configFile:
+                lines = configFile.readlines()
+            for line in lines:
+                line=line.strip('\t\r\n -')
+                if line[0] == '#':
+                    pass
+                elif '=' in line:
+                    s=line.split('=',maxsplit=1)
+                    self.argOptions.set_default(s[0].strip(),s[1].strip())
+                elif ' ' in line:
+                    s=line.split(maxsplit=1)
+                    self.argOptions.set_default(s[0],s[1])
+                else:
+                    storeTrues.append(line)
+        # second pass with defaults modified
+        self.argParser = self.createParser()
+        self.userOptions = self.argParser.parse_args( args )
+        for opt in storeTrues:
+            self.userOptions.__setattr__(opt, True)
         return self.userOptions
 
 if __name__ == "__main__":
