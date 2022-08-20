@@ -430,7 +430,7 @@ class FountainProcessor():
         self.start2Method = {
             '!':    lambda l: self.addLine(l[1:], 'Action' ),
             '@':    lambda l: self.addLine(l[1:], 'Character' ),
-            '%':    lambda l: self.addLine(l[1:], 'Dialogue'),  # non standard extension
+            '%':    lambda l: self.addLine(l[1:], 'Dialogue', mergeLines=True),  # non standard extension
             '~':    lambda l: self.addLine(l[1:], 'Lyrics', 'Dialogue' ),
             '(':    lambda l: self.addLine(l, 'Parenthetical'), # expects the ()
             '.':    lambda l: self.addLine(l[1:], 'Scene Heading'),
@@ -533,7 +533,7 @@ class FountainProcessor():
                     line=''
         return newline
 
-    def addLine(self, line, style, fakeStyle=None ): #, blankAfter=False):
+    def addLine(self, line, style, fakeStyle=None, mergeLines = False ):
         if (replacement:=self.styleReplacement.get((self.lastStyle, style))):
             localStyle = replacement[0]
         elif self.pageBreakRequired:
@@ -549,11 +549,10 @@ class FountainProcessor():
                 docline=Paragraph(' ')
                 self.docbody.append(docline)
             self.BlankPending = False
-
         if '_' in line or '*' in line:
             line=self.emphasise( line, localStyle )
             docline=Element.from_tag( '<text:p text:style-name="'+\
-                    internalStyleName+'">'+line+'</text:p>' )
+                internalStyleName+'">'+line+'</text:p>' )
         else:
             docline=Paragraph(line, style=localStyle)
         self.docbody.append(docline)
@@ -562,6 +561,10 @@ class FountainProcessor():
             self.Blank = True
         else:
             self.Blank = line.strip() == ''
+        while mergeLines and self.linenr < len(self.lines) and \
+              self.lines[self.linenr+1][0].isalnum():
+            self.linenr += 1
+            self.addLine( self.lines[self.linenr], style)
 
     def pageBreak(self):
         self.pageBreakRequired = True
@@ -570,7 +573,7 @@ class FountainProcessor():
 
     def blank(self):
         self.Blank = True
-        self.BlankPending = True
+        self.BlankPending = not self.lastBlank
 
     def noteBlock(self, line):
         line=line[2:]
@@ -639,7 +642,7 @@ class FountainProcessor():
             elif line[0:3] == '===':
                 self.pageBreak()
             elif self.lastStyle in ['Character', 'Parenthetical', 'Notes']:
-                self.addLine(line, 'Dialogue')
+                self.addLine(line, 'Dialogue', mergeLines=True)
             else:
                 self.addLine(line, 'Action')
             self.linenr += 1
