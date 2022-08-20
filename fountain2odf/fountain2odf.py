@@ -430,7 +430,8 @@ class FountainProcessor():
         self.start2Method = {
             '!':    lambda l: self.addLine(l[1:], 'Action' ),
             '@':    lambda l: self.addLine(l[1:], 'Character' ),
-            '%':    lambda l: self.addLine(l[1:], 'Dialogue', mergeLines=True),  # non standard extension
+            '%':    lambda l: self.addLine(l[1:], 'Dialogue', mergeLines=True), # non standard extension
+            '\'':   lambda l: self.addLine(l, 'Dialogue', mergeLines=True), # Romeo & Juliet is riddled with lines starting 'Tis
             '~':    lambda l: self.addLine(l[1:], 'Lyrics', 'Dialogue' ),
             '(':    lambda l: self.addLine(l, 'Parenthetical'), # expects the ()
             '.':    lambda l: self.addLine(l[1:], 'Scene Heading'),
