@@ -251,7 +251,7 @@ class FountainProcessor():
 <style:text-properties style:font-name="Liberation Sans1" fo:font-family="&apos;Liberation Sans&apos;" style:font-style-name="Regular" style:font-family-generic="swiss" style:font-pitch="variable" fo:font-size="14pt"/>
 </style:style>'''],
         ['Title_20_Line_20_Centered','Title_20_Line','''<style:style style:name="Title_20_Line_20_Centered" style:display-name="Title Line Centered" style:family="paragraph" style:parent-style-name="Title_20_Line">
-<style:paragraph-properties fo:text-align="center" style:justify-single-word="false"/>
+<style:paragraph-properties fo:margin-left="5.08cm" style:justify-single-word="false"/>
 </style:style>'''],
         ['Title_20_Ends','Title_20_Line','''<style:style style:name="Title_20_Ends" style:display-name="Title Ends" style:family="paragraph" style:parent-style-name="Title_20_Line" style:master-page-name="">
 <style:paragraph-properties style:page-number="auto" fo:break-after="page" style:border-line-width-bottom="0.018cm 0.004cm 0.018cm" fo:padding="0.049cm" fo:border-left="none" fo:border-right="none" fo:border-top="none" fo:border-bottom="1.11pt double-thin #808080"/>
@@ -446,18 +446,26 @@ class FountainProcessor():
                 # first title becomes document title
                 if len(line) > 6 and line[0:6] == 'Title:':
                     line=line[6:].strip()
-                docline=Paragraph(line.strip(),style="Title")
+                docline=Paragraph(line.strip('_* \t'),style="Title")
                 self.docbody.append(docline)
                 self.lastTitleStyle= 'Title Line Centered'
                 firstTitle = False
             elif ':' in line:
                 parts=line.strip().split(':',1)
                 self.lastTitleStyle= 'Title Line Centered' if parts[0].lower() in ['title', 'credit','author','authors','source'] else 'Title Line'
-                docline=Paragraph(line.strip(),style=self.lastTitleStyle)
+                if '_' in line or '*' in line:
+                    line=self.emphasise( line, self.lastTitleStyle, required_before=' :\t' )
+                    docline=Element.from_tag( '<text:p text:style-name="'+\
+                            self.lastTitleStyle+'">'+line+'</text:p>' )
+                else:
+                    docline=Paragraph(line.strip(), style=self.lastTitleStyle)
                 self.docbody.append(docline)
             elif len( line) > 3 and (line[0:3] == '   ' or line[0]=='\t'):
-                docline=Paragraph(style=self.lastTitleStyle)
-                docline.append_plain_text('    '+(line.strip()))
+                line=line.strip()
+                if '_' in line or '*' in line:
+                    line=self.emphasise( line, self.lastTitleStyle, required_before=' :\t' )
+                docline=Element.from_tag( '<text:p text:style-name="'+\
+                        self.lastTitleStyle+'"><text:tab/>'+line+'</text:p>' )
                 self.docbody.append(docline)
             else:
                 break
@@ -489,7 +497,7 @@ class FountainProcessor():
         self.document.insert_style(newstyle, automatic=True)
         return styleName
 
-    def emphasise( self, line, localStyle, parentSettings=StyleFlags.NONE ):
+    def emphasise( self, line, localStyle, parentSettings=StyleFlags.NONE, required_before=' \t' ):
         newline = line
         for rule in self.emphasiseSubstrs:
             matchStr, endStr, style, settings = rule
@@ -497,7 +505,7 @@ class FountainProcessor():
             newline=''
             while line != '':
                 if (start:=line.find(matchStr)) >=0:
-                    if start == 0 or line[start-1] in ' \t':
+                    if start == 0 or line[start-1] in required_before:
                         newline+=line[:start]
                         line = line[start+len(matchStr):]
                         endMatch=line.find(endStr)
@@ -527,7 +535,7 @@ class FountainProcessor():
 
     def addLine(self, line, style, fakeStyle=None ): #, blankAfter=False):
         if (replacement:=self.styleReplacement.get((self.lastStyle, style))):
-            localStyle, blankAfter = replacement
+            localStyle = replacement[0]
         elif self.pageBreakRequired:
             localStyle = style + ' PB'
         else:
