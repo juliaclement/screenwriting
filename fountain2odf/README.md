@@ -20,13 +20,28 @@ Documentation: All original non-program files are licenced under the
 [Creative Commons Attribution-ShareAlike 4.0 International (CC
 BY-SA 4.0)](https://creativecommons.org/licenses/by-sa/4.0/) licence.
 
+## Setup:
+
+1.  Install dependencies, see below,
+2.  Download the program folder from github,
+3.  Download the file odf\_fountain\_lib.py from the lib directory, and
+    place in the same directory as fountain2odf.py
+
+### Dependencies
+
+1.  Python. This is written to the latest version of Python3, currently
+    Python 3.10. It may work with earlier versions of Python 3 but this
+    is untested. It won’t work with Python 2
+2.  The odfdo library. This can be installed with pip:  
+    pip install odfdo
+
 ## Usage:
 
 After installing, this is used from the command line:
 
 python fountain2odf.py \[-h\] \[--output OUTPUT\] \[--template
 TEMPLATE\] \[--forcestyles\] \[--pdf\] \[--docx\] \[--papersize
-{A4,asis,US Letter}\]
+{A4,asis,US Letter}\] \[--sections rule\]
 
 \[--margins {Standard,asis,std}\] 
 
@@ -79,6 +94,9 @@ your LibreOffice default
 Page margins. Asis = use whatever the template or LibreOffice uses as
 default. Standard = 1/1.5 inches all around
 
+\--sections,-S rule        Create sections (or use sections in the
+template file). See below for format of rule
+
 \--config CONFIG      Configuration file which will be merged with
 command-line options. See below for format.
 
@@ -116,13 +134,6 @@ The format of the file is:
     
       - then add --config \[*path*\]configUS to your parameters
 
-### Setup
-
-1.  Install dependencies, see below,
-2.  Download the program folder from github,
-3.  Download the file odf\_fountain\_lib.py from the lib directory, and
-    place in the same directory as fountain2odf.py
-
 ### Making PDF files
 
 As its use case is to allow editing of files in a wordprocessor,
@@ -135,11 +146,55 @@ even .DOCX formats. For this to work you will need to install
 LibreOffice and make sure it’s in your path. It might also work with an
 install of Apache OpenOffice but this is currently untested.
 
-## Dependencies
+### Sections (Experimental)
 
-  - The latest version of python3
-  - The odfdo library. This can be installed with pip:  
-    pip install odfdo
+WARNING: This feature is experimental, it will probably be revised as I
+learn more about the use of sections in scripts, especially for stage
+plays.
+
+By default fountain2odf writes a simple Oasis Open Document format text
+file. If a template file is used, the generated document simply follows
+the existing text, if any. When there are multiple input files, each
+gets its own title pages immediately before its body. This treatment can
+be visually unappealing.
+
+Oasis Open Document permit the document to be divided into named
+sections. We are using these in a simplistic way. While we support an
+unlimited number of sections, we only use a maximum of two of these:
+
+  - Titles where the title pages from all .fountain files are gathered,
+    and
+  - Body where the script itself is placed by a simple concatenation of
+    the bodies of the .fountain files
+
+#### Controlling Sections
+
+Section use is controlled by the “--sections rule” or “-S rule” option
+where rule is:
+
+  - “No” (default) don’t use sections
+  - “Yes” create or use the sections “Titles” and “Body”
+  - Name. Create or use a section with this name for titles
+  - Titles-name,Body-name. Create or use sections with these names
+  - Front-matter-name,Titles-name,Body-name\[, back-matter-names ...\].
+    Create or use these names. Front-matter and back-matter sections
+    will be created as empty sections.
+
+The “or use” above means use a section already in the template file.
+When it is not empty, fountain2odf will insert the new text after the
+existing contents.
+
+#### Blank lines and Sections
+
+When using a section in the template file, if the existing section
+consists of a single blank line, this will be deleted before inserting
+text in the section. 
+
+Call this a personal preference, but when trying to add additional text
+after a section, I find dealing with adjacent sections painful so when
+fountain2odf creates a section it automatically adds a blank line in the
+body of the output file after the section. Happy to make this optional
+if anyone has a use case that makes it painful for them.
 
 ## Language
 

@@ -27,8 +27,9 @@
 from enum import IntFlag
 import argparse
 from pathlib import Path
+from typing import Collection
 from unicodedata import name
-from odfdo import Document, Paragraph, Element, Style
+from odfdo import Document, Paragraph, Element, Style, Section
 from odfdo.xmlpart import XmlPart
 import sys
 
@@ -380,19 +381,63 @@ class FountainProcessor():
         for setting in docSettings.xpath("//config:config-item[@config:name='AddParaTableSpacingAtStart']"):
             setting.text = 'false'
 
+    def removeSingleParagraph( self, target ):
+        paragraphs = target.get_paragraphs()
+        if len(paragraphs) == 1 and paragraphs[0].text.strip() == '':
+            target.delete(paragraphs[0])
+    
+    def ensureSection( self, name ):
+        section = None
+        for testsection in self.docbody.get_sections():
+            if name == getattr(testsection, 'name', testsection.attributes.get('text:name', None)):
+                section = testsection
+                break
+        if section is None:
+            section = Section(style="Standard", name=name)
+            self.docbody.append(section)
+        self.removeSingleParagraph(section)
+        return section
+
     def __init__(self, userOptions) :
         self.userOptions = userOptions
         if self.userOptions.template:
-            self.document = Document(self.userOptions.template.name)
+            self.document = Document(str(self.userOptions.template))
         else:
             self.document = Document("text")
-            
+
         # New / empty .odt documents contain a single blank paragraph.
         # Delete if present
         self.docbody = self.document.body
-        paragraphs =  self.docbody.get_paragraphs()
-        if len(paragraphs) == 1:
-             self.docbody.delete(paragraphs[0])
+        self.removeSingleParagraph( self.docbody)
+
+        # create sections if needed.
+        # have a blank line between sections for ease of subsequent editing
+        sectionNames=userOptions.sections.split(',')
+        if self.userOptions.sections.lower() == 'no':
+            self.titles=self.docbody
+            self.body=self.docbody
+        elif self.userOptions.sections.lower() == 'yes':
+            self.titles=self.ensureSection('Titles')
+            self.docbody.append(Paragraph(' '))
+            self.body=self.ensureSection('Body')
+            self.docbody.append(Paragraph(' '))
+        elif len(sectionNames) == 1: # separate section for Titles
+            self.titles=self.ensureSection(sectionNames[0])
+            self.body = self.docbody
+        elif len(sectionNames) == 2: # separate sections for Titles & Body
+            self.titles=self.ensureSection(sectionNames[0])
+            self.docbody.append(Paragraph(' '))
+            self.body=self.ensureSection(sectionNames[1])
+            self.docbody.append(Paragraph(' '))
+        else: # create sections for Prologue, Title, Body, Others
+            sections=[]
+            for name in sectionNames:
+                section= self.ensureSection(name)
+                sections.append(section)
+                self.docbody.append(Paragraph(' '))
+            self.titles=sections[1]
+            self.body=sections[2]
+            
         self.inTitles = False
         self.linenr = 0
         self.maxline = 0
@@ -448,7 +493,7 @@ class FountainProcessor():
                 if len(line) > 6 and line[0:6] == 'Title:':
                     line=line[6:].strip()
                 docline=Paragraph(line.strip('_* \t'),style="Title")
-                self.docbody.append(docline)
+                self.titles.append(docline)
                 self.lastTitleStyle= 'Title Line Centered'
                 firstTitle = False
             elif ':' in line:
@@ -460,14 +505,14 @@ class FountainProcessor():
                             self.lastTitleStyle+'">'+line+'</text:p>' )
                 else:
                     docline=Paragraph(line.strip(), style=self.lastTitleStyle)
-                self.docbody.append(docline)
+                self.titles.append(docline)
             elif len( line) > 3 and (line[0:3] == '   ' or line[0]=='\t'):
                 line=line.strip()
                 if '_' in line or '*' in line:
                     line=self.emphasise( line, self.lastTitleStyle, required_before=' :\t' )
                 docline=Element.from_tag( '<text:p text:style-name="'+\
                         self.lastTitleStyle+'"><text:tab/>'+line+'</text:p>' )
-                self.docbody.append(docline)
+                self.titles.append(docline)
             else:
                 break
             self.linenr += 1
@@ -548,7 +593,7 @@ class FountainProcessor():
         if self.BlankPending:
             if not styleInfo.isSpaceBefore():
                 docline=Paragraph(' ')
-                self.docbody.append(docline)
+                self.body.append(docline)
             self.BlankPending = False
         if '_' in line or '*' in line:
             line=self.emphasise( line, localStyle )
@@ -556,7 +601,7 @@ class FountainProcessor():
                 internalStyleName+'">'+line+'</text:p>' )
         else:
             docline=Paragraph(line, style=localStyle)
-        self.docbody.append(docline)
+        self.body.append(docline)
         self.style= fakeStyle if fakeStyle else style
         if styleInfo.isSpaceAfter():
             self.Blank = True
@@ -709,6 +754,9 @@ class Fountain2odf():
                 help = "output filename. Default = an empty odt file." )
         self.argOptions.add_argument('--template', '-t', type=Path, \
                 help = "File with the Screenplay styles pre-loaded. Template files are supported." )
+        self.argOptions.add_argument('--sections', '-S', default='No',\
+                help = "Use ODT sections in the output file. Format 'Yes' or section names e.g. 'Title[,Body]'. "+
+                       "If the named sections exist they will be used, otherwise created." )
         self.argOptions.add_argument('--forcestyles', '-fs', action="store_true", \
                 help = "Replace existing styles of the same name in the template with the current versions" )
         self.argOptions.add_argument('--pdf', action="store_true", \

@@ -70,4 +70,4 @@ Convert string like 123cm, 12in. 0.0002645ff etc to points
 def toPoints( value: str ) :
     uom = value[-2:]
     factor = measurementFactors.get(uom,1.0)
-    return float(value.strip('cimitpf '))*factor
+    return float(value.strip('cimntpf '))*factor
