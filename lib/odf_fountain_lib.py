@@ -34,17 +34,6 @@ def coalesce( *args ):
             return i
     return None
 
-def ifNull( old, new ):
-    """
-    Return first value unless that is null then return second
-    based on non standard SQL functions: MsSQL: IsNull, Oracle nvl, MySql IfNull ...
-
-    @TODO: Replace with coalesce()
-    """
-    if old is None:
-        return new
-    return old
-
 """
 Convert measurements
 Libre Office supports setting measurement units to
@@ -55,7 +44,7 @@ are the same throughout the document, but some documents are inches
 As points are the most fine of these measurements, we
 convert the measurements in the document to points
 """
-measurementFactors = {
+measurement_factors = {
     'pt':   1.0,
     'pc':   12.0, # not found in my sample documents
     'in':   72.0,
@@ -67,7 +56,7 @@ measurementFactors = {
 """
 Convert string like 123cm, 12in. 0.0002645ff etc to points
 """
-def toPoints( value: str ) :
+def to_points( value: str ) :
     uom = value[-2:]
-    factor = measurementFactors.get(uom,1.0)
+    factor = measurement_factors.get(uom,1.0)
     return float(value.strip('cimntpf '))*factor

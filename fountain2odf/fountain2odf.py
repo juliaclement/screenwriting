@@ -27,8 +27,6 @@
 from enum import IntFlag
 import argparse
 from pathlib import Path
-from typing import Collection
-from unicodedata import name
 from odfdo import Document, Paragraph, Element, Style, Section
 from odfdo.xmlpart import XmlPart
 import sys
@@ -37,158 +35,157 @@ import sys
 # expect to find it on the path or in either the same directory as this module or ../lib
 # like Pooh I know there must be a better way but can't think what it might be
 try:
-    from odf_fountain_lib import toPoints, ifNull
+    from odf_fountain_lib import to_points, coalesce
 except ModuleNotFoundError:
-    selfPath = Path(__file__).parent
+    selfPath=Path(__file__).parent
     sys.path.append(str(selfPath))
-    utilPath = selfPath.parent / 'lib'
+    utilPath=selfPath.parent / 'lib'
     if utilPath.is_dir():
         sys.path.append(str(utilPath))
-    from odf_fountain_lib import toPoints, ifNull
+    from odf_fountain_lib import to_points, coalesce
 
 class StyleFlags(IntFlag):
     # None
-    NONE = 0
+    NONE=0
     # Primary
-    UNDERLINE = 1
-    ITALIC = 2
-    BOLD = 4
+    UNDERLINE=1
+    ITALIC=2
+    BOLD=4
     # Combinations
-    ITALIC_UNDERLINE = 3
-    BOLD_UNDERLINE = 5
-    BOLD_ITALIC = 6
-    BOLD_ITALIC_UNDERLINE = 7
+    ITALIC_UNDERLINE=3
+    BOLD_UNDERLINE=5
+    BOLD_ITALIC=6
+    BOLD_ITALIC_UNDERLINE=7
 
 class OdtStyle:
     """
     Information we need to know about styles
     TODO: Very similar to the class of the same name in odf2fountain. Merge?
     """
-    allStyles = {}
+    allStyles={}
     stylesToParent=[]
-    def __init__(self, style:Style ):
-        self.margin_left = None
-        self.margin_right = None
-        self.margin_top = None
-        self.margin_bottom = None
-        self.break_after = None
-        self.break_before = None
+
+    # inherit properties
+    def maybe_inherit_from_parent(self):
+        if self.parent and self.parent.heritageLoaded:
+            self.heritageLoaded=True
+            self.fountainInfo=coalesce(self.fountainInfo, self.parent.fountainInfo)
+            self.italic=coalesce(self.italic, self.parent.italic)
+            self.bold=coalesce(self.bold, self.parent.bold)
+            self.underline=coalesce(self.underline, self.parent.underline)
+            self.uppercase=coalesce(self.uppercase, self.parent.uppercase)
+            self.align=coalesce(self.align, self.parent.align)
+            self.border_line_width=coalesce(self.border_line_width, self.parent.border_line_width)
+            self.border=coalesce(self.border, self.parent.border)
+            self.margin_left=coalesce(self.margin_left, self.parent.margin_left)
+            self.margin_right=coalesce(self.margin_right, self.parent.margin_right)
+            self.margin_top=coalesce(self.margin_top, self.parent.margin_top)
+            self.margin_bottom=coalesce(self.margin_bottom, self.parent.margin_bottom)
+            self.page_break=coalesce(self.page_break, self.parent.page_break)
+            self.break_before=coalesce(self.break_before, self.parent.break_before)
+            self.break_after=coalesce(self.break_after, self.parent.break_after)
+            self.is_title=coalesce(self.is_title, self.parent.is_title)
+
+    def assign_parent(self, parent):
+        self.parent=parent
+        self.baseParent=parent
+        self.baseParentName=parent.name
+
+    def assign_parent_by_name(self, parentName):
+        self.parent=OdtStyle.allStyles.get(parentName)
+        if self.parent:
+            self.assign_parent(self.parent)
+        else:
+            self.baseParentName=parentName
+    
+    def is_space_before(self):
+        if self.break_before or \
+            (self.margin_top is not None and self.margin_top > 5):
+            return True
+        return False
+    
+    def is_space_after(self):
+        if self.break_after or \
+            (self.margin_bottom is not None and self.margin_bottom > 5):
+            return True
+        return False
+
+    def __init__(self, style:Style):
+        self.margin_left=None
+        self.margin_right=None
+        self.margin_top=None
+        self.margin_bottom=None
+        self.break_after=None
+        self.break_before=None
         # Fixme:
-        parentName = style.parent_style
-        name = style.name
+        parentName=style.parent_style
+        name=style.name
         self.fountainInfo=None
         for child in style.children:
-            if (value := child.attributes.get('fo:break-after')) and value == 'page':
+            if (value := child.attributes.get('fo:break-after')) and value=='page':
                 self.break_after=True
-            if (value := child.attributes.get('fo:break-before')) and value == 'page':
+            if (value := child.attributes.get('fo:break-before')) and value=='page':
                 self.break_before=True
             if (value := child.attributes.get('fo:margin-top')):
-                self.margin_top=toPoints(value)
+                self.margin_top=to_points(value)
             if (value := child.attributes.get('fo:margin-bottom')):
-                self.margin_bottom=toPoints(value)
+                self.margin_bottom=to_points(value)
             if (value := child.attributes.get('fo:margin-left')):
-                self.margin_left=toPoints(value)
+                self.margin_left=to_points(value)
             if (value := child.attributes.get('fo:margin-right')):
-                self.margin_right=toPoints(value)                
-        self.name = name
-        self.heritageLoaded = False
-        self.parentName = parentName
-        self.bold = None
-        self.italic = None
-        self.underline = None
+                self.margin_right=to_points(value)                
+        self.name=name
+        self.heritageLoaded=False
+        self.parentName=parentName
+        self.bold=None
+        self.italic=None
+        self.underline=None
 
         if name in ('Standard','Script_20_Elements', 'Heading'):
             # These two styles are special and end the parent chain
-            self.parentName = name
-            self.parent = self
-            self.baseParentName = name
-            self.baseParent = self
-            self.is_base = True
-            self.heritageLoaded = True
-            #if not self.fountainInfo:
-            #    self.fountainInfo=fountainRules['Null']
-            self.italic = False
-            self.uppercase = False
+            self.parentName=name
+            self.parent=self
+            self.baseParentName=name
+            self.baseParent=self
+            self.is_base=True
+            self.heritageLoaded=True
+            self.italic=False
+            self.uppercase=False
             self.align='left'
-            self.border_line_width = '0cm'
-            self.border = '0.1pt double #000000'
-            self.page_break = False
-            self.is_title = False
+            self.border_line_width='0cm'
+            self.border='0.1pt double #000000'
+            self.page_break=False
+            self.is_title=False
         else:
-            self.is_base = False
+            self.is_base=False
             self.baseParentName=parentName # will be adjusted later
-            self.assignParentByName(parentName)
-            self.uppercase = None
-            self.align = None
-            self.border_line_width = None
-            self.border = None
-            self.page_break = None
+            self.assign_parent_by_name(parentName)
+            self.uppercase=None
+            self.align=None
+            self.border_line_width=None
+            self.border=None
+            self.page_break=None
             if 'TITLE' in name.upper():
-                self.is_title = True
+                self.is_title=True
             else:
-                self.is_title = None
+                self.is_title=None
 
         if self.parent and self.parent.baseParent:
-            self.baseParent = self.parent.baseParent
-            self.fountainInfo = ifNull(self.fountainInfo, self.parent.fountainInfo)
+            self.baseParent=self.parent.baseParent
+            self.fountainInfo=coalesce(self.fountainInfo, self.parent.fountainInfo)
         if self.parent and self.parent.heritageLoaded:
-            self.maybeInheritFromParent()
-        self.allStyles[self.name] = self
+            self.maybe_inherit_from_parent()
+        self.allStyles[self.name]=self
         self.stylesToParent.append(self)
 
-    # inherit properties
-    def maybeInheritFromParent(self):
-        if self.parent and self.parent.heritageLoaded:
-            self.heritageLoaded = True
-            self.fountainInfo = ifNull( self.fountainInfo, self.parent.fountainInfo )
-            self.italic = ifNull( self.italic, self.parent.italic )
-            self.bold = ifNull( self.bold, self.parent.bold )
-            self.underline = ifNull( self.underline, self.parent.underline)
-            self.uppercase = ifNull( self.uppercase, self.parent.uppercase )
-            self.align = ifNull( self.align, self.parent.align )
-            self.border_line_width = ifNull( self.border_line_width, self.parent.border_line_width )
-            self.border = ifNull( self.border, self.parent.border )
-            self.margin_left = ifNull( self.margin_left, self.parent.margin_left )
-            self.margin_right = ifNull( self.margin_right, self.parent.margin_right )
-            self.margin_top = ifNull( self.margin_top, self.parent.margin_top )
-            self.margin_bottom = ifNull( self.margin_bottom, self.parent.margin_bottom )
-            self.page_break = ifNull( self.page_break, self.parent.page_break )
-            self.break_before = ifNull( self.break_before, self.parent.break_before )
-            self.break_after = ifNull( self.break_after, self.parent.break_after )
-            self.is_title = ifNull( self.is_title, self.parent.is_title )
-
-    def assignParent( self, parent ):
-        self.parent = parent
-        self.baseParent = parent
-        self.baseParentName = parent.name
-
-    def assignParentByName( self, parentName ):
-        self.parent = OdtStyle.allStyles.get(parentName)
-        if self.parent:
-            self.assignParent( self.parent )
-        else:
-            self.baseParentName = parentName
-    
-    def isSpaceBefore(self):
-        if self.break_before or \
-            (self.margin_top is not None and self.margin_top > 5 ):
-            return True
-        return False
-    
-    def isSpaceAfter(self):
-        if self.break_after or \
-            (self.margin_bottom is not None and self.margin_bottom > 5 ):
-            return True
-        return False
-
     def __str__(self):
-        return f" {self.name}({self.parentName}) margins {self.margin_left}, {self.margin_right}, {self.fountainInfo}"
+        return f"{self.name}({self.parentName}) margins {self.margin_left}, {self.margin_right}, {self.fountainInfo}"
 
 class FountainProcessor():
     # 
-    styleReplacement = {
+    style_replacement={
         # (Previous & new styles): (Use this style & blank lines following tracker)
-        # Style names = base style + Ax for "After X"
+        # Style names=base style + Ax for "After X"
         ('Title Line', 'Action'): ('Action ATi', True),
         ('Title Line', 'Centered'): ('Action ATi', True),
         ('Title Line', 'Scene Heading'): ('Scene Heading ATi', True),
@@ -196,8 +193,8 @@ class FountainProcessor():
         ('Scene Heading', 'Character'): ('Character', False)
     }
     
-    emphasiseSubstrs=[
-        # start   end     style,    code(biu = bold, italics, underline), 
+    emphasis_substrs=[
+        # start   end     style,    code(biu=bold, italics, underline), 
         ['_***',  '***_', None,     StyleFlags.BOLD_ITALIC_UNDERLINE],
         ['***',   '***',  None,     StyleFlags.BOLD_ITALIC],
         ['_**',   '**_',  None,     StyleFlags.BOLD_UNDERLINE],
@@ -302,36 +299,36 @@ class FountainProcessor():
 </style:style>''']
     ]
 
-    style_templates = {}
+    style_templates={}
     known_styles={}
 
-    def load_a_style( self, template ):
+    def load_a_style(self, template):
         if None==self.known_styles.get(template[1]):
-            self.load_a_style( self.style_templates.get(template[1]))
-        styleName=self.document.insert_style(template[2])
-        style:Style=self.document.get_style('paragraph', styleName)
-        self.known_styles[template[0]]=OdtStyle( style )
+            self.load_a_style(self.style_templates.get(template[1]))
+        style_name=self.document.insert_style(template[2])
+        style:Style=self.document.get_style('paragraph', style_name)
+        self.known_styles[template[0]]=OdtStyle(style)
 
     def insert_style_templates(self):
         #Pass 1 load in the styles from the template
         for child in self.document.get_styles(family="paragraph"):
             if child.name:
-                self.known_styles[child.name]=OdtStyle( child )
+                self.known_styles[child.name]=OdtStyle(child)
         #Pass 2 load the list of needed styles
         for child in self.needed_styles_list:
             self.style_templates[child[0]]=child
         #Pass 3 create any styles that don't exist or replace existing ones
-        if self.userOptions.forcestyles:
+        if self.user_options.forcestyles:
             for child in self.needed_styles_list:
-                styleName=self.document.insert_style(child[2])
-                style:Style=self.document.get_style('paragraph', styleName)
-                self.known_styles[child[0]]=OdtStyle( style )
+                style_name=self.document.insert_style(child[2])
+                style:Style=self.document.get_style('paragraph', style_name)
+                self.known_styles[child[0]]=OdtStyle(style)
         else:
             for child in self.needed_styles_list:
                 if None==self.known_styles.get(child[0]):
-                    self.load_a_style( child )
+                    self.load_a_style(child)
 
-    def attributesToStr( self, prefix, collection, suffix='' ):
+    def attributes_to_str(self, prefix, collection, suffix=''):
         """
             From a dictionary {a:1, b:2, ...} create the xml entity
             <ent a="1" b="2" c="3" />
@@ -341,31 +338,31 @@ class FountainProcessor():
             answer+=f' {item}="{value}"'
         return prefix+answer+suffix
 
-    def globalOptions( self, userOptions) :
+    def global_options(self, user_options) :
         # Set papersize & margins
         # This is really horrible, odfdo doesn't seem to provide a way of replacing 
         # the attribute values in an entity definition :(
         # As a work around, we pull the original style apart, rebuild it and replace
         # the original. YUCK!!!
-        oldStyle:Style = None
+        oldStyle:Style=None
         if oldStyle:=self.document.get_style('page-layout', 'Mpm1'):
-            output:str=self.attributesToStr('<style:page-layout', oldStyle.attributes, '>')
+            output:str=self.attributes_to_str('<style:page-layout', oldStyle.attributes, '>')
             for child in oldStyle.children:
-                if child.tag == 'style:page-layout-properties':
+                if child.tag=='style:page-layout-properties':
                     attrs=child.attributes
-                    if userOptions.papersize and userOptions.papersize != 'asis':
-                        width, height = {'A4' : ('21cm', '29.7cm'),
-                                        'US' : ('8.5in', '11in'),
-                                        'LE' : ('8.5in', '11in')
-                                        }.get( userOptions.papersize[:2].upper() )
-                        attrs['fo:page-width'] = width
-                        attrs['fo:page-height'] = height
-                    if userOptions.margins.upper() != 'ASIS':
-                        attrs['fo:margin-left'] = '1.5in'
-                        attrs['fo:margin-right'] = '1in'
-                        attrs['fo:margin-top'] = '0.7874in'
-                        attrs['fo:margin-bottom'] = '1in'
-                    output+=self.attributesToStr('<style:page-layout-properties',attrs,'/>')
+                    if user_options.papersize and user_options.papersize != 'asis':
+                        width, height={'A4' : ('21cm', '29.7cm'),
+                                       'US' : ('8.5in', '11in'),
+                                       'LE' : ('8.5in', '11in')
+                                      }.get(user_options.papersize[:2].upper())
+                        attrs['fo:page-width']=width
+                        attrs['fo:page-height']=height
+                    if user_options.margins.upper() != 'ASIS':
+                        attrs['fo:margin-left']='1.5in'
+                        attrs['fo:margin-right']='1in'
+                        attrs['fo:margin-top']='0.7874in'
+                        attrs['fo:margin-bottom']='1in'
+                    output+=self.attributes_to_str('<style:page-layout-properties',attrs,'/>')
                 else:
                     output+=child.serialize()
             output+='</style:page-layout>'
@@ -377,161 +374,76 @@ class FountainProcessor():
         docSettings:XmlPart=self.document.get_part("settings")
         setting:Element=None
         for setting in docSettings.xpath("//config:config-item[@config:name='AddParaTableSpacing']"):
-            setting.text = 'false'
+            setting.text='false'
         for setting in docSettings.xpath("//config:config-item[@config:name='AddParaTableSpacingAtStart']"):
-            setting.text = 'false'
+            setting.text='false'
 
-    def removeSingleParagraph( self, target ):
-        paragraphs = target.get_paragraphs()
-        if len(paragraphs) == 1 and paragraphs[0].text.strip() == '':
+    def remove_single_paragraph(self, target):
+        paragraphs=target.get_paragraphs()
+        if len(paragraphs)==1 and paragraphs[0].text.strip()=='':
             target.delete(paragraphs[0])
     
-    def ensureSection( self, name ):
-        section = None
+    def ensure_section(self, name):
+        section=None
         for testsection in self.docbody.get_sections():
-            if name == getattr(testsection, 'name', testsection.attributes.get('text:name', None)):
-                section = testsection
+            if name==getattr(testsection, 'name', testsection.attributes.get('text:name', None)):
+                section=testsection
                 break
         if section is None:
-            section = Section(style="Standard", name=name)
+            section=Section(style="Standard", name=name)
             self.docbody.append(section)
-        self.removeSingleParagraph(section)
+        self.remove_single_paragraph(section)
         return section
 
-    def __init__(self, userOptions) :
-        self.userOptions = userOptions
-        if self.userOptions.template:
-            self.document = Document(str(self.userOptions.template))
-        else:
-            self.document = Document("text")
-
-        # New / empty .odt documents contain a single blank paragraph.
-        # Delete if present
-        self.docbody = self.document.body
-        self.removeSingleParagraph( self.docbody)
-
-        # create sections if needed.
-        # have a blank line between sections for ease of subsequent editing
-        sectionNames=userOptions.sections.split(',')
-        if self.userOptions.sections.lower() == 'no':
-            self.titles=self.docbody
-            self.body=self.docbody
-        elif self.userOptions.sections.lower() == 'yes':
-            self.titles=self.ensureSection('Titles')
-            self.docbody.append(Paragraph(' '))
-            self.body=self.ensureSection('Body')
-            self.docbody.append(Paragraph(' '))
-        elif len(sectionNames) == 1: # separate section for Titles
-            self.titles=self.ensureSection(sectionNames[0])
-            self.body = self.docbody
-        elif len(sectionNames) == 2: # separate sections for Titles & Body
-            self.titles=self.ensureSection(sectionNames[0])
-            self.docbody.append(Paragraph(' '))
-            self.body=self.ensureSection(sectionNames[1])
-            self.docbody.append(Paragraph(' '))
-        else: # create sections for Prologue, Title, Body, Others
-            sections=[]
-            for name in sectionNames:
-                section= self.ensureSection(name)
-                sections.append(section)
-                self.docbody.append(Paragraph(' '))
-            self.titles=sections[1]
-            self.body=sections[2]
-            
-        self.inTitles = False
-        self.linenr = 0
-        self.maxline = 0
-        self.style=''
-        self.lastStyle=''
-        self.BlankPending = False
-        self.Blank = True
-        self.lastBlank = True
-        self.pageBreakRequired = False
-        self.maxAutoStyle = 0
-        self.globalOptions( userOptions)
-        self.insert_style_templates()
-        self.lastTitleStyle='Title Line'
-        for s in self.document.get_styles(family='text', automatic=True):
-            autostyle=int(s.name[1:])
-            self.maxAutoStyle = autostyle if autostyle > self.maxAutoStyle else self.maxAutoStyle
-            settings=['','','']
-            for c in s.children:
-                if c.tag=='style:text-properties':
-                    for name in c.attributes:
-                        value=c.attributes[name]
-                        if name == 'style:text-underline-style' and value=='solid':
-                            settings[2]='u'
-                        elif name == 'fo:font-style' and value=='italic':
-                            settings[1]='i'
-                        elif name == 'fo:font-weight' and value=='bold':
-                            settings[0]='b'
-                        else:
-                            if userOptions.debug:
-                                print( 'Unused', s.name, name,value)
-            name='T'+''.join(settings)
-            for e in self.emphasiseSubstrs:
-                if e[3] == name:
-                    e[2] = s.name
-        self.start2Method = {
-            '!':    lambda l: self.addLine(l[1:], 'Action' ),
-            '@':    lambda l: self.addLine(l[1:], 'Character' ),
-            '%':    lambda l: self.addLine(l[1:], 'Dialogue', mergeLines=True), # non standard extension
-            '\'':   lambda l: self.addLine(l, 'Dialogue', mergeLines=True), # Romeo & Juliet is riddled with lines starting 'Tis
-            '~':    lambda l: self.addLine(l[1:], 'Lyrics', 'Dialogue' ),
-            '(':    lambda l: self.addLine(l, 'Parenthetical'), # expects the ()
-            '.':    lambda l: self.addLine(l[1:], 'Scene Heading'),
-            '>':    lambda l: self.transitionOrCentred(l), # expects the >
-        }
-
-    def process_titles( self ):
-        self.inTitles = True
-        firstTitle = True
+    def process_titles(self):
+        self.in_titles=True
+        firstTitle=True
         while self.linenr < self.maxline and \
               (line := self.lines[ self.linenr].rstrip('\n\r')) != '':
             if firstTitle:
                 # first title becomes document title
-                if len(line) > 6 and line[0:6] == 'Title:':
+                if len(line) > 6 and line[0:6]=='Title:':
                     line=line[6:].strip()
                 docline=Paragraph(line.strip('_* \t'),style="Title")
                 self.titles.append(docline)
-                self.lastTitleStyle= 'Title Line Centered'
-                firstTitle = False
+                self.last_title_style= 'Title Line Centered'
+                firstTitle=False
             elif ':' in line:
                 parts=line.strip().split(':',1)
-                self.lastTitleStyle= 'Title Line Centered' if parts[0].lower() in ['title', 'credit','author','authors','source'] else 'Title Line'
+                self.last_title_style= 'Title Line Centered' if parts[0].lower() in ['title', 'credit','author','authors','source'] else 'Title Line'
                 if '_' in line or '*' in line:
-                    line=self.emphasise( line, self.lastTitleStyle, required_before=' :\t' )
-                    docline=Element.from_tag( '<text:p text:style-name="'+\
-                            self.lastTitleStyle+'">'+line+'</text:p>' )
+                    line=self.emphasise(line, self.last_title_style, required_before=' :\t')
+                    docline=Element.from_tag('<text:p text:style-name="'+\
+                            self.last_title_style+'">'+line+'</text:p>')
                 else:
-                    docline=Paragraph(line.strip(), style=self.lastTitleStyle)
+                    docline=Paragraph(line.strip(), style=self.last_title_style)
                 self.titles.append(docline)
-            elif len( line) > 3 and (line[0:3] == '   ' or line[0]=='\t'):
+            elif len(line) > 3 and (line[0:3]=='   ' or line[0]=='\t'):
                 line=line.strip()
                 if '_' in line or '*' in line:
-                    line=self.emphasise( line, self.lastTitleStyle, required_before=' :\t' )
-                docline=Element.from_tag( '<text:p text:style-name="'+\
-                        self.lastTitleStyle+'"><text:tab/>'+line+'</text:p>' )
+                    line=self.emphasise(line, self.last_title_style, required_before=' :\t')
+                docline=Element.from_tag('<text:p text:style-name="'+\
+                        self.last_title_style+'"><text:tab/>'+line+'</text:p>')
                 self.titles.append(docline)
             else:
                 break
             self.linenr += 1
-        if line == '':
-            self.lastBlank = True
+        if line=='':
+            self.last_blank=True
             self.linenr += 1
-        self.inTitles = False
-        self.lastStyle='Title Line'
-        self.pageBreakRequired = True
+        self.in_titles=False
+        self.last_style='Title Line'
+        self.page_break_required=True
         
-    def getOrCreateStyle(self, ParentRule: StyleFlags):
-        for rule in self.emphasiseSubstrs:
-            if rule[3] == ParentRule:
+    def get_or_create_style(self, parent_rule: StyleFlags):
+        for rule in self.emphasis_substrs:
+            if rule[3]==parent_rule:
                 if rule[2]:
                     return rule[2]
                 break
-        self.maxAutoStyle += 1
-        styleName = 'T'+str(self.maxAutoStyle)
-        newstyle= f'<style:style style:name="{styleName}" style:family="text">'\
+        self.max_auto_style += 1
+        style_name='T'+str(self.max_auto_style)
+        newstyle= f'<style:style style:name="{style_name}" style:family="text">'\
                   +'<style:text-properties'
         if rule[3] & StyleFlags.ITALIC:
             newstyle+=' fo:font-style="italic" style:font-style-asian="italic" style:font-style-complex="italic"'
@@ -541,37 +453,37 @@ class FountainProcessor():
             newstyle+=' style:text-underline-style="solid" style:text-underline-width="auto" style:text-underline-color="font-color"'
         newstyle+='/></style:style>'
         self.document.insert_style(newstyle, automatic=True)
-        return styleName
+        return style_name
 
-    def emphasise( self, line, localStyle, parentSettings=StyleFlags.NONE, required_before=' \t' ):
-        newline = line
-        for rule in self.emphasiseSubstrs:
-            matchStr, endStr, style, settings = rule
+    def emphasise(self, line, local_style, parent_settings=StyleFlags.NONE, required_before=' \t'):
+        newline=line
+        for rule in self.emphasis_substrs:
+            match_str, end_str, style, settings=rule
             line=newline 
             newline=''
             while line != '':
-                if (start:=line.find(matchStr)) >=0:
-                    if start == 0 or line[start-1] in required_before:
+                if (start:=line.find(match_str)) >= 0:
+                    if start==0 or line[start-1] in required_before:
                         newline+=line[:start]
-                        line = line[start+len(matchStr):]
-                        endMatch=line.find(endStr)
-                        if endMatch >= 0:
-                            bit=line[:endMatch]
-                            line=line[endMatch+len(endStr):]
-                            newSettings=parentSettings | settings
-                            rule[2] = self.getOrCreateStyle(newSettings)
+                        line=line[start+len(match_str):]
+                        end_match=line.find(end_str)
+                        if end_match >= 0:
+                            bit=line[:end_match]
+                            line=line[end_match+len(end_str):]
+                            new_settings=parent_settings | settings
+                            rule[2]=self.get_or_create_style(new_settings)
                             style=rule[2]
-                            bit=self.emphasise(bit,localStyle, newSettings)
+                            bit=self.emphasise(bit,local_style, new_settings)
                             newline+=f'<text:span text:style-name="{style}">{bit}</text:span>'
                         else:
                             newline+=line
                             line=''
-                    elif line[start-1] == '\\':
+                    elif line[start-1]=='\\':
                         start += 1
                         newline += line[:start]
-                        line = line[start:]
+                        line=line[start:]
                     else:
-                        split=start+len(matchStr)
+                        split=start+len(match_str)
                         newline+=line[:split]
                         line=line[split:]
                 else:
@@ -579,49 +491,49 @@ class FountainProcessor():
                     line=''
         return newline
 
-    def addLine(self, line, style, fakeStyle=None, mergeLines = False ):
-        if (replacement:=self.styleReplacement.get((self.lastStyle, style))):
-            localStyle = replacement[0]
-        elif self.pageBreakRequired:
-            localStyle = style + ' PB'
+    def add_line(self, line, style, fake_style=None, merge_lines=False):
+        if (replacement:=self.style_replacement.get((self.last_style, style))):
+            local_style=replacement[0]
+        elif self.page_break_required:
+            local_style=style + ' PB'
         else:
-            localStyle = style
-        self.pageBreakRequired = False
-        internalStyleName=localStyle.replace(' ','_20_')
-        styleInfo : OdtStyle = self.known_styles.get(internalStyleName) or \
+            local_style=style
+        self.page_break_required=False
+        internal_style_name=local_style.replace(' ','_20_')
+        style_info : OdtStyle=self.known_styles.get(internal_style_name) or \
                                self.known_styles.get('Action')
-        if self.BlankPending:
-            if not styleInfo.isSpaceBefore():
+        if self.blank_pending:
+            if not style_info.is_space_before():
                 docline=Paragraph(' ')
                 self.body.append(docline)
-            self.BlankPending = False
+            self.blank_pending=False
         if '_' in line or '*' in line:
-            line=self.emphasise( line, localStyle )
-            docline=Element.from_tag( '<text:p text:style-name="'+\
-                internalStyleName+'">'+line+'</text:p>' )
+            line=self.emphasise(line, local_style)
+            docline=Element.from_tag('<text:p text:style-name="'+\
+                internal_style_name+'">'+line+'</text:p>')
         else:
-            docline=Paragraph(line, style=localStyle)
+            docline=Paragraph(line, style=internal_style_name)
         self.body.append(docline)
-        self.style= fakeStyle if fakeStyle else style
-        if styleInfo.isSpaceAfter():
-            self.Blank = True
+        self.style= fake_style if fake_style else style
+        if style_info.is_space_after():
+            self.blank=True
         else:
-            self.Blank = line.strip() == ''
-        while mergeLines and self.linenr < len(self.lines) and \
+            self.blank=line.strip()==''
+        while merge_lines and self.linenr < len(self.lines) and \
               self.lines[self.linenr+1][0].isalnum():
             self.linenr += 1
-            self.addLine( self.lines[self.linenr], style)
+            self.add_line(self.lines[self.linenr], style)
 
-    def pageBreak(self):
-        self.pageBreakRequired = True
-        self.Blank = True
-        self.BlankPending = False
+    def page_break(self):
+        self.page_break_required=True
+        self.blank=True
+        self.blank_pending=False
 
-    def blank(self):
-        self.Blank = True
-        self.BlankPending = not self.lastBlank
+    def process_blank(self):
+        self.blank=True
+        self.blank_pending=not self.last_blank
 
-    def noteBlock(self, line):
+    def note_block(self, line):
         line=line[2:]
         if ']]' in line:
             # single line note
@@ -629,189 +541,280 @@ class FountainProcessor():
             style='Notes'
             for part in split:
                 if part != '':
-                    self.addLine(part, style)
+                    self.add_line(part, style)
                 style='Dialogue'
         else:
             #multi-line notes. Not yet implemented
-            self.addLine(line + '...  Not yet implemented', 'Notes')
-        self.Blank = False
+            self.add_line(line + '...  Not yet implemented', 'Notes')
+        self.blank=False
     
-    def transitionOrCentred(self, line):
-        if line[0] == '>':
+    def transition_or_centred(self, line):
+        if line[0]=='>':
             line=line[1:]
         if line[-1]==':':
-            self.addLine( line, 'Transition' )
+            self.add_line(line, 'Transition')
         else:
-            self.addLine( line.rstrip('<'), 'Centered', 'Action')
+            self.add_line(line.rstrip('<'), 'Centered', 'Action')
 
-    def processFile(self, lines):
+    def process_file_contents(self, lines):
         if lines is str:
-            lines = lines.replace(b'\r\n',b'\n')
-            lines = lines.split(b'\n')
+            lines=lines.replace(b'\r\n',b'\n')
+            lines=lines.split(b'\n')
         
         if len(lines) < 2:
-            print( "Emptyish file")
+            print("Emptyish file")
             return
-        line : str = ''
-        self.lines = lines
-        self.linenr = 0
-        self.maxline = len(lines)
+        line : str=''
+        self.lines=lines
+        self.linenr=0
+        self.maxline=len(lines)
         if lines[self.maxline-1].rstrip('\n\r ')=='':
             self.maxline -= 1
         else:
             lines.append('')
         # skip blank lines at start
-        while self.linenr < self.maxline and lines[ self.linenr ].rstrip(' \r\n') == '':
+        while self.linenr < self.maxline and lines[ self.linenr ].rstrip(' \r\n')=='':
             self.linenr += 1
         # optional titles
         if ':' in lines[ self.linenr] :
             self.process_titles()
         while self.linenr < self.maxline:
-            line = lines[self.linenr].rstrip('\n\r')
-            if len(line.strip()) == 0:
-                self.blank()
-            elif (fun:= self.start2Method.get(line[0])):
+            line=lines[self.linenr].rstrip('\n\r')
+            if len(line.strip())==0:
+                self.process_blank()
+            elif (fun:= self.start_to_method.get(line[0])):
                 fun(line)
-            elif len(line) > 1 and line[0:2] == '[[':
-                self.noteBlock( line )
-            elif (l := line.strip()[0]) == '(':
-                self.addLine(l, 'Parenthetical')
+            elif len(line) > 1 and line[0:2]=='[[':
+                self.note_block(line)
+            elif (l := line.strip()[0])=='(':
+                self.add_line(l, 'Parenthetical')
             elif line[0:5] in ['INT. ', 'EXT. '] and \
-                    lines[self.linenr+1].strip(' \t\r\n') == '':
-                self.addLine(line, 'Scene Heading')
-            elif self.lastBlank and line.upper() == line and \
+                    lines[self.linenr+1].strip(' \t\r\n')=='':
+                self.add_line(line, 'Scene Heading')
+            elif self.last_blank and line.upper()==line and \
                     lines[self.linenr+1].strip(' \t\r\n') != '':
-                if line[-3:] == 'TO:':
-                    self.addLine(line, 'Transition')
+                if line[-3:]=='TO:':
+                    self.add_line(line, 'Transition')
                 else:
-                    self.addLine(line, 'Character')
-            elif line[0:3] == '===':
-                self.pageBreak()
-            elif self.lastStyle in ['Character', 'Parenthetical', 'Notes']:
-                self.addLine(line, 'Dialogue', mergeLines=True)
+                    self.add_line(line, 'Character')
+            elif line[0:3]=='===':
+                self.page_break()
+            elif self.last_style in ['Character', 'Parenthetical', 'Notes']:
+                self.add_line(line, 'Dialogue', merge_lines=True)
             else:
-                self.addLine(line, 'Action')
+                self.add_line(line, 'Action')
             self.linenr += 1
-            self.lastBlank = self.Blank
-            self.lastStyle = self.style
+            self.last_blank=self.blank
+            self.last_style=self.style
 
-    def processFiles(self):
-        for fileName in self.userOptions.files:
-            with open(fileName, 'r') as file:
-                lines = file.readlines()
-                if self.userOptions.debug:
-                    print( lines )
-                self.processFile(lines)
+    def process_files(self):
+        for file_name in self.user_options.files:
+            with open(file_name, 'r') as file:
+                lines=file.readlines()
+                if self.user_options.debug:
+                    print(lines)
+                self.process_file_contents(lines)
 
-    def saveOdt(self):
+    def save_odt_file(self):
         from os import chdir, getcwd, system
-        if self.userOptions.output:
-            outputFile = self.userOptions.output
+        if self.user_options.output:
+            output_file_path=self.user_options.output
         else:
-            sourceFile = self.userOptions.files[0]
-            outputFile = sourceFile.parent / (sourceFile.stem + '.odt')
-        self.document.save(outputFile, pretty=True)
-        if self.userOptions.pdf or self.userOptions.docx:
+            source_path=self.user_options.files[0]
+            output_file_path=source_path.parent / (source_path.stem + '.odt')
+        self.document.save(output_file_path, pretty=True)
+        if self.user_options.pdf or self.user_options.docx:
             olddir=getcwd()
-            chdir(outputFile.parent)
-            if self.userOptions.pdf:
-                system("soffice  --headless --convert-to pdf "+str(outputFile))
-            if self.userOptions.docx:
-                system("soffice  --headless --convert-to docx "+str(outputFile))
-            chdir( olddir )
+            chdir(output_file_path.parent)
+            if self.user_options.pdf:
+                system("soffice  --headless --convert-to pdf "+str(output_file_path))
+            if self.user_options.docx:
+                system("soffice  --headless --convert-to docx "+str(output_file_path))
+            chdir(olddir)
 
     def run(self):
-        self.processFiles()
-        self.saveOdt()
+        self.process_files()
+        self.save_odt_file()
+
+    def __init__(self, user_options) :
+        self.user_options=user_options
+        if self.user_options.template:
+            self.document=Document(str(self.user_options.template))
+        else:
+            self.document=Document("text")
+
+        # New / empty .odt documents contain a single blank paragraph.
+        # Delete if present
+        self.docbody=self.document.body
+        self.remove_single_paragraph(self.docbody)
+
+        # create sections if needed.
+        # have a blank line between sections for ease of subsequent editing
+        section_names=user_options.sections.split(',')
+        if self.user_options.sections.lower()=='no':
+            self.titles=self.docbody
+            self.body=self.docbody
+        elif self.user_options.sections.lower()=='yes':
+            self.titles=self.ensure_section('Titles')
+            self.docbody.append(Paragraph(' '))
+            self.body=self.ensure_section('Body')
+            self.docbody.append(Paragraph(' '))
+        elif len(section_names)==1: # separate section for Titles
+            self.titles=self.ensure_section(section_names[0])
+            self.body=self.docbody
+        elif len(section_names)==2: # separate sections for Titles & Body
+            self.titles=self.ensure_section(section_names[0])
+            self.docbody.append(Paragraph(' '))
+            self.body=self.ensure_section(section_names[1])
+            self.docbody.append(Paragraph(' '))
+        else: # create sections for Prologue, Title, Body, Others
+            sections=[]
+            for name in section_names:
+                section= self.ensure_section(name)
+                sections.append(section)
+                self.docbody.append(Paragraph(' '))
+            self.titles=sections[1]
+            self.body=sections[2]
+            
+        self.in_titles=False
+        self.linenr=0
+        self.maxline=0
+        self.style=''
+        self.last_style=''
+        self.blank_pending=False
+        self.blank=True
+        self.last_blank=True
+        self.page_break_required=False
+        self.max_auto_style=0
+        self.global_options(user_options)
+        self.insert_style_templates()
+        self.last_title_style='Title Line'
+        for s in self.document.get_styles(family='text', automatic=True):
+            autostyle=int(s.name[1:])
+            self.max_auto_style=autostyle if autostyle > self.max_auto_style else self.max_auto_style
+            settings=['','','']
+            for c in s.children:
+                if c.tag=='style:text-properties':
+                    for name in c.attributes:
+                        value=c.attributes[name]
+                        if name=='style:text-underline-style' and value=='solid':
+                            settings[2]='u'
+                        elif name=='fo:font-style' and value=='italic':
+                            settings[1]='i'
+                        elif name=='fo:font-weight' and value=='bold':
+                            settings[0]='b'
+                        else:
+                            if user_options.debug:
+                                print('Unused', s.name, name,value)
+            name='T'+''.join(settings)
+            for e in self.emphasis_substrs:
+                if e[3]==name:
+                    e[2]=s.name
+        self.start_to_method={
+            '!':    lambda l: self.add_line(l[1:], 'Action'),
+            '@':    lambda l: self.add_line(l[1:], 'Character'),
+            '%':    lambda l: self.add_line(l[1:], 'Dialogue', merge_lines=True), # non standard extension
+            '\'':   lambda l: self.add_line(l, 'Dialogue', merge_lines=True), # Romeo & Juliet is riddled with lines starting 'Tis
+            '~':    lambda l: self.add_line(l[1:], 'Lyrics', 'Dialogue'),
+            '(':    lambda l: self.add_line(l, 'Parenthetical'), # expects the ()
+            '.':    lambda l: self.add_line(l[1:], 'Scene Heading'),
+            '>':    lambda l: self.transition_or_centred(l), # expects the >
+        }
 
 class ArgOptions:
     class Arg:
+        def set_default(self, default):
+            self.kw['default']=default
+
         def __init__(self, *pargs, **kw) -> None:
-            self.pargs = pargs
+            self.pargs=pargs
             self.name=pargs[0].strip('-')
             self.kw=kw
-        def set_default(self, default ):
-            self.kw['default']=default
-    def __init__(self) -> None:
-        self.args={}
-    def add_argument(self, *pargs, **kw ):
+
+    def add_argument(self, *pargs, **kw):
         arg=self.Arg(*pargs,**kw)
         self.args[arg.name]=arg
+
     def set_default(self, opt, default):
         try:
             arg=self.args[opt]
             arg.set_default(default)
         except KeyError:
             print(f'Unknown option {opt}, skipped')
-    def export( self, argParser:argparse.ArgumentParser) :
+
+    def export(self, arg_parser:argparse.ArgumentParser) :
         for arg in self.args.values():
-            argParser.add_argument( *arg.pargs, **arg.kw)
+            arg_parser.add_argument(*arg.pargs, **arg.kw)            
+
+    def __init__(self) -> None:
+        self.args={}
 
 class Fountain2odf():
-    def __init__( self ):
-        self.argOptions=ArgOptions()
-        self.argOptions.add_argument('--output', '-o', type=Path, \
-                help = "output filename. Default = an empty odt file." )
-        self.argOptions.add_argument('--template', '-t', type=Path, \
-                help = "File with the Screenplay styles pre-loaded. Template files are supported." )
-        self.argOptions.add_argument('--sections', '-S', default='No',\
-                help = "Use ODT sections in the output file. Format 'Yes' or section names e.g. 'Title[,Body]'. "+
-                       "If the named sections exist they will be used, otherwise created." )
-        self.argOptions.add_argument('--forcestyles', '-fs', action="store_true", \
-                help = "Replace existing styles of the same name in the template with the current versions" )
-        self.argOptions.add_argument('--pdf', action="store_true", \
-                help = "use LibreOffice or Apache OpenOffice to create a PDF file in the same directory as the output file. "+ \
-                       "Requires LibreOffice or Apache OpenOffice installed and in the current path" )
-        self.argOptions.add_argument('--docx', action="store_true", \
-                help = "use LibreOffice or Apache OpenOffice to create a MS Word file in the same directory as the output file. "+ \
-                       "Requires LibreOffice or Apache OpenOffice installed and in the current path" )
-        self.argOptions.add_argument('--papersize','-p', choices=['a4', 'A4', 'asis', 'US', 'Letter', 'US Letter'], default='asis',\
-                help = "Document's page size. Default = the current setting of the template file, if any, or your LibreOffice default")
-        self.argOptions.add_argument('--margins','-m', choices=['Standard', 'standard', 'asis', 'STD', 'std'], default='standard', 
-                help="Page margins. Asis = use whatever the template or LibreOffice uses as default. Standard = 1/1.5 inches all around")
-        self.argOptions.add_argument('--config', type=Path,
-                help="Configuration file which will be merged with command-line options. See documentation for format.")
-        self.argOptions.add_argument('--debug', action="store_true", help="provide developer information" )
 
-        self.argParser=self.createParser()
-        self.userOptions = argparse.Namespace()
+    def create_parser(self)->argparse.ArgumentParser:
+        arg_parser=argparse.ArgumentParser(description='Fountain to Open Document text converter.')
+        arg_parser.add_argument('prog', type=Path, help="")
+        arg_parser.add_argument('files', nargs='+', type=Path, help="input files space separated")
+        self.arg_options.export(arg_parser)
+        return arg_parser
 
-    def createParser(self)->argparse.ArgumentParser:
-        argParser = argparse.ArgumentParser(description='Fountain to Open Document text converter.')
-        argParser.add_argument('prog', type=Path, help = "" )
-        argParser.add_argument('files', nargs='+', type=Path, help = "input files space separated" )
-        self.argOptions.export(argParser)
-        return argParser
-
-    def parseArgs( self, args = sys.argv ):
-        if len(args) == 0:
-            args = ['prog', '--help']
-        self.userOptions = self.argParser.parse_args( args )
-        if self.userOptions.config:
-            storeTrues = []
-            with open(self.userOptions.config, 'r') as configFile:
-                lines = configFile.readlines()
+    def parse_args(self, args=sys.argv):
+        if len(args)==0:
+            args=['prog', '--help']
+        self.user_options=self.arg_parser.parse_args(args)
+        if self.user_options.config:
+            storeTrues=[]
+            with open(self.user_options.config, 'r') as configFile:
+                lines=configFile.readlines()
             for line in lines:
                 line=line.strip('\t\r\n -')
-                if line[0] == '#':
+                if line[0]=='#':
                     pass
                 elif '=' in line:
                     s=line.split('=',maxsplit=1)
-                    self.argOptions.set_default(s[0].strip(),s[1].strip())
+                    self.arg_options.set_default(s[0].strip(),s[1].strip())
                 elif ' ' in line:
                     s=line.split(maxsplit=1)
-                    self.argOptions.set_default(s[0],s[1])
+                    self.arg_options.set_default(s[0],s[1])
                 else:
                     storeTrues.append(line)
-        # second pass with defaults modified
-        self.argParser = self.createParser()
-        self.userOptions = self.argParser.parse_args( args )
-        for opt in storeTrues:
-            self.userOptions.__setattr__(opt, True)
-        return self.userOptions
+            # second pass with defaults modified
+            self.arg_parser=self.create_parser()
+            self.user_options=self.arg_parser.parse_args(args)
+            for opt in storeTrues:
+                self.user_options.__setattr__(opt, True)
+        return self.user_options
 
-if __name__ == "__main__":
+    def __init__(self):
+        self.arg_options=ArgOptions()
+        self.arg_options.add_argument('--output', '-o', type=Path, \
+                help="output filename. Default=an empty odt file.")
+        self.arg_options.add_argument('--template', '-t', type=Path, \
+                help="File with the Screenplay styles pre-loaded. Template files are supported.")
+        self.arg_options.add_argument('--sections', '-S', default='No',\
+                help="Use ODT sections in the output file. Format 'Yes' or section names e.g. 'Title[,Body]'. "+
+                       "If the named sections exist they will be used, otherwise created.")
+        self.arg_options.add_argument('--forcestyles', '-fs', action="store_true", \
+                help="Replace existing styles of the same name in the template with the current versions")
+        self.arg_options.add_argument('--pdf', action="store_true", \
+                help="use LibreOffice or Apache OpenOffice to create a PDF file in the same directory as the output file. "+ \
+                       "Requires LibreOffice or Apache OpenOffice installed and in the current path")
+        self.arg_options.add_argument('--docx', action="store_true", \
+                help="use LibreOffice or Apache OpenOffice to create a MS Word file in the same directory as the output file. "+ \
+                       "Requires LibreOffice or Apache OpenOffice installed and in the current path")
+        self.arg_options.add_argument('--papersize','-p', choices=['a4', 'A4', 'asis', 'US', 'Letter', 'US Letter'], default='asis',\
+                help="Document's page size. Default=the current setting of the template file, if any, or your LibreOffice default")
+        self.arg_options.add_argument('--margins','-m', choices=['Standard', 'standard', 'asis', 'STD', 'std'], default='standard', 
+                help="Page margins. Asis=use whatever the template or LibreOffice uses as default. Standard=1/1.5 inches all around")
+        self.arg_options.add_argument('--config', type=Path,
+                help="Configuration file which will be merged with command-line options. See documentation for format.")
+        self.arg_options.add_argument('--debug', action="store_true", help="provide developer information")
+
+        self.arg_parser=self.create_parser()
+        self.user_options=argparse.Namespace()
+
+if __name__=="__main__":
     prog=Fountain2odf()
-    prog.parseArgs()
-    processor = FountainProcessor( prog.userOptions )
+    prog.parse_args()
+    processor=FountainProcessor(prog.user_options)
     processor.run()
