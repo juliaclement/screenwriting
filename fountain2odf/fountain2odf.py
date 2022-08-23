@@ -35,14 +35,14 @@ import sys
 # expect to find it on the path or in either the same directory as this module or ../lib
 # like Pooh I know there must be a better way but can't think what it might be
 try:
-    from odf_fountain_lib import to_points, coalesce
+    from odf_fountain_lib import to_points, coalesce, ArgOptions
 except ModuleNotFoundError:
     selfPath=Path(__file__).parent
     sys.path.append(str(selfPath))
     utilPath=selfPath.parent / 'lib'
     if utilPath.is_dir():
         sys.path.append(str(utilPath))
-    from odf_fountain_lib import to_points, coalesce
+    from odf_fountain_lib import to_points, coalesce, ArgOptions
 
 class StyleFlags(IntFlag):
     # None
@@ -721,72 +721,11 @@ class FountainProcessor():
             '>':    lambda l: self.transition_or_centred(l), # expects the >
         }
 
-class ArgOptions:
-    class Arg:
-        def set_default(self, default):
-            self.kw['default']=default
-
-        def __init__(self, *pargs, **kw) -> None:
-            self.pargs=pargs
-            self.name=pargs[0].strip('-')
-            self.kw=kw
-
-    def add_argument(self, *pargs, **kw):
-        arg=self.Arg(*pargs,**kw)
-        self.args[arg.name]=arg
-
-    def set_default(self, opt, default):
-        try:
-            arg=self.args[opt]
-            arg.set_default(default)
-        except KeyError:
-            print(f'Unknown option {opt}, skipped')
-
-    def export(self, arg_parser:argparse.ArgumentParser) :
-        for arg in self.args.values():
-            arg_parser.add_argument(*arg.pargs, **arg.kw)            
-
-    def __init__(self) -> None:
-        self.args={}
-
 class Fountain2odf():
-
-    def create_parser(self)->argparse.ArgumentParser:
-        arg_parser=argparse.ArgumentParser(description='Fountain to Open Document text converter.')
-        arg_parser.add_argument('prog', type=Path, help="")
-        arg_parser.add_argument('files', nargs='+', type=Path, help="input files space separated")
-        self.arg_options.export(arg_parser)
-        return arg_parser
-
-    def parse_args(self, args=sys.argv):
-        if len(args)==0:
-            args=['prog', '--help']
-        self.user_options=self.arg_parser.parse_args(args)
-        if self.user_options.config:
-            storeTrues=[]
-            with open(self.user_options.config, 'r') as configFile:
-                lines=configFile.readlines()
-            for line in lines:
-                line=line.strip('\t\r\n -')
-                if line[0]=='#':
-                    pass
-                elif '=' in line:
-                    s=line.split('=',maxsplit=1)
-                    self.arg_options.set_default(s[0].strip(),s[1].strip())
-                elif ' ' in line:
-                    s=line.split(maxsplit=1)
-                    self.arg_options.set_default(s[0],s[1])
-                else:
-                    storeTrues.append(line)
-            # second pass with defaults modified
-            self.arg_parser=self.create_parser()
-            self.user_options=self.arg_parser.parse_args(args)
-            for opt in storeTrues:
-                self.user_options.__setattr__(opt, True)
-        return self.user_options
-
     def __init__(self):
-        self.arg_options=ArgOptions()
+        self.arg_options=ArgOptions('Fountain to Open Document text converter.')
+        self.arg_options.add_argument('prog', type=Path, help="")
+        self.arg_options.add_argument('files', nargs='+', type=Path, help="input files space separated")
         self.arg_options.add_argument('--output', '-o', type=Path, \
                 help="output filename. Default=an empty odt file.")
         self.arg_options.add_argument('--template', '-t', type=Path, \
@@ -809,12 +748,12 @@ class Fountain2odf():
         self.arg_options.add_argument('--config', type=Path,
                 help="Configuration file which will be merged with command-line options. See documentation for format.")
         self.arg_options.add_argument('--debug', action="store_true", help="provide developer information")
-
-        self.arg_parser=self.create_parser()
-        self.user_options=argparse.Namespace()
+    
+    def parse_args(self, args):
+        return self.arg_options.parse_args(args)
 
 if __name__=="__main__":
     prog=Fountain2odf()
-    prog.parse_args()
-    processor=FountainProcessor(prog.user_options)
+    user_options = prog.parse_args(sys.argv)
+    processor=FountainProcessor(user_options)
     processor.run()

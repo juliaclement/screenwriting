@@ -37,14 +37,14 @@ from io import StringIO
 # expect to find it on the path or in either the same directory as this module or ../lib
 # like Pooh I know there must be a better way but can't think what it might be
 try:
-    from odf_fountain_lib import to_points, coalesce
+    from odf_fountain_lib import to_points, coalesce, ArgOptions
 except ModuleNotFoundError:
     self_path = Path(__file__).parent
     sys.path.append(str(self_path))
     util_path = self_path.parent / 'lib'
     if util_path.is_dir():
         sys.path.append(str(util_path))
-    from odf_fountain_lib import to_points, coalesce
+    from odf_fountain_lib import to_points, coalesce, ArgOptions
 
 
 user_options=None
@@ -540,16 +540,19 @@ def odtFileDecode(odtfile: str):
 
 def odf2fountain_main():
     global user_options
-    argParser = argparse.ArgumentParser(description='Open Document text to Fountain converter.')
-    argParser.add_argument('files', nargs='+', type=Path, help = "input files space separated" )
-    argParser.add_argument('--output', '-output', type=Path, \
+    arg_options=ArgOptions('Open Document text to Fountain converter.', config=True)
+    arg_options.add_argument('prog', type=Path, help = "" )
+    arg_options.add_argument('files', nargs='+', type=Path, help = "input files space separated" )
+    arg_options.add_argument('--output', '-o', type=Path, \
+            help="output filename. Default=an empty odt file.")
+    arg_options.add_argument('--output', '-output', type=Path, \
             help = "output filename. Default = input filename.fountain" )
-    argParser.add_argument('--forcetypes', '-forcetypes', action="store_true",
+    arg_options.add_argument('--forcetypes', '-forcetypes', action="store_true",
             help="Start lines with a special character rather than let the fountain translator use heuristics to determine line type." )
-    argParser.add_argument('--extendedfountain', '-extendedfountain', action="store_true",
+    arg_options.add_argument('--extendedfountain', '-extendedfountain', action="store_true",
             help="Enable extra type forcing characters not supported by most fountain translators" )
-    argParser.add_argument('--debug', '-debug', action="store_true", help="provide developer information" )
-    user_options = argParser.parse_args( sys.argv[1:] )
+    arg_options.add_argument('--debug', '-debug', action="store_true", help="provide developer information" )
+    user_options = arg_options.parse_args( sys.argv )
     if user_options.extendedfountain:
         fountain_rules['Dialogue'].prefix = '%'
     if user_options.output and len(user_options.files) != 1:
