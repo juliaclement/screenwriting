@@ -27,11 +27,11 @@ def add_to_path():
         the path, expect to find them in sub directories of our parent directory."""
     # like Pooh I know there must be a better way but can't think what it might be
     try:
-        from odf_fountain_lib import to_points, coalesce
+        from code.odf_fountain_lib import to_points, coalesce
     except ModuleNotFoundError:
         base_path=Path(__file__).parent.parent
 
-        for subdir in ['lib', 'fountain2odf', 'odf2fountain']:
+        for subdir in ['code', 'lib']:
             target_path=base_path / subdir
             if target_path.is_dir():
                 sys.path.append(str(target_path))
