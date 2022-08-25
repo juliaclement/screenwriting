@@ -35,14 +35,14 @@ import sys
 # expect to find it on the path or in either the same directory as this module or ../lib
 # like Pooh I know there must be a better way but can't think what it might be
 try:
-    from odf_fountain_lib import to_points, coalesce, ArgOptions
+    from odf_fountain_lib import to_points, coalesce, ArgOptions, attributes_to_str
 except ModuleNotFoundError:
     selfPath=Path(__file__).parent
     sys.path.append(str(selfPath))
     utilPath=selfPath.parent / 'lib'
     if utilPath.is_dir():
         sys.path.append(str(utilPath))
-    from odf_fountain_lib import to_points, coalesce, ArgOptions
+    from odf_fountain_lib import to_points, coalesce, ArgOptions, attributes_to_str
 
 class StyleFlags(IntFlag):
     # None
@@ -328,16 +328,6 @@ class FountainProcessor():
                 if None==self.known_styles.get(child[0]):
                     self.load_a_style(child)
 
-    def attributes_to_str(self, prefix, collection, suffix=''):
-        """
-            From a dictionary {a:1, b:2, ...} create the xml entity
-            <ent a="1" b="2" c="3" />
-        """
-        answer=""
-        for item,value in collection.items():
-            answer+=f' {item}="{value}"'
-        return prefix+answer+suffix
-
     def global_options(self, user_options) :
         # Set papersize & margins
         # This is really horrible, odfdo doesn't seem to provide a way of replacing 
@@ -346,7 +336,7 @@ class FountainProcessor():
         # the original. YUCK!!!
         oldStyle:Style=None
         if oldStyle:=self.document.get_style('page-layout', 'Mpm1'):
-            output:str=self.attributes_to_str('<style:page-layout', oldStyle.attributes, '>')
+            output:str=attributes_to_str('<style:page-layout', oldStyle.attributes, '>')
             for child in oldStyle.children:
                 if child.tag=='style:page-layout-properties':
                     attrs=child.attributes
@@ -362,7 +352,7 @@ class FountainProcessor():
                         attrs['fo:margin-right']='1in'
                         attrs['fo:margin-top']='0.7874in'
                         attrs['fo:margin-bottom']='1in'
-                    output+=self.attributes_to_str('<style:page-layout-properties',attrs,'/>')
+                    output+=attributes_to_str('<style:page-layout-properties',attrs,'/>')
                 else:
                     output+=child.serialize()
             output+='</style:page-layout>'

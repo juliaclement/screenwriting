@@ -30,7 +30,14 @@ except ModuleNotFoundError:
     sys.path.append(str(self_path))
     from screenwriting_tests_common import add_to_path
 add_to_path()
-from odf_fountain_lib import ArgOptions, coalesce, to_points
+from odf_fountain_lib import ArgOptions, coalesce, to_points, attributes_to_str
+
+def test_attributes_to_str():
+    dict={'a':'orses', 'b':'for mutton'}
+    ans=attributes_to_str('<attr',dict,'/>')
+    assert ans=='<attr a="orses" b="for mutton"/>'
+    ans=attributes_to_str('<attr',dict)
+    assert ans=='<attr a="orses" b="for mutton"'
 
 def test_inches_to_points():
     pt = to_points('1in')

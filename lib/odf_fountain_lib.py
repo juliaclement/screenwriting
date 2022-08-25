@@ -66,8 +66,22 @@ def to_points( value: str ) :
     factor = measurement_factors.get(uom,1.0)
     return float(value.strip('cimntpf '))*factor
 
+def attributes_to_str( prefix:str, collection, suffix:str='')->str:
+    """
+        From a dictionary {a:1, b:2, ...} create the xml entity
+        <ent a="1" b="2" c="3" />
+    """
+    answer=""
+    for item,value in collection.items():
+        answer+=f' {item}="{value}"'
+    return prefix+answer+suffix
+
 
 class ArgOptions:
+    """
+        A wrapper around argparse.ArgumentParser that permits values
+        in a configuration file to be merged in as default values
+    """
     class Arg:
         def set_default(self, default):
             self.kw['default']=default
