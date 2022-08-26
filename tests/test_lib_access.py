@@ -18,7 +18,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 from pathlib import Path
 import sys
 import argparse
@@ -92,6 +91,7 @@ def test_arg_parse_magic_config(tmp_path:Path):
     assert str(options.prog)=='prog'
     assert options.files==[Path('file')]
     assert options.test == 'Yes'
+
 
 #test_arg_parse()
 #test_arg_parse_config(Path('/tmp'))
